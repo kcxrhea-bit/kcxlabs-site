@@ -1,6 +1,6 @@
 import { AlertTriangle, Download, Mail, ShieldAlert, Sparkles } from "lucide-react";
 
-const downloadHref = "/downloads/beta/KCxStudioCompanion-v0.9.0-beta.1.zip";
+const downloadHref = "https://github.com/kcxrhea-bit/KCxStudioCompanion/releases/download/v0.9.0-beta.1/KCxStudioCompanion-v0.9.0-beta.1.zip";
 
 const installSteps = [
   "Download the ZIP",
@@ -44,7 +44,7 @@ export function BetaPage() {
             </div>
             <div className="micro-panel">
               <span className="block text-kcx-ash">Size</span>
-              <span className="mt-2 block font-mono text-kcx-steel">180.5 MB</span>
+             <span className="mt-2 block font-mono text-kcx-steel">184 MB</span>
             </div>
           </div>
 
