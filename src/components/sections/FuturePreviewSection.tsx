@@ -12,6 +12,10 @@ export function FuturePreviewSection() {
             <h2 className="text-3xl font-semibold leading-tight text-white sm:text-4xl">Planned surfaces, staged carefully.</h2>
           </div>
           <div className="flex flex-wrap gap-3">
+            <a href="/beta" className="icon-chip scroll-mt-28">
+              <Download size={16} />
+              Beta Download
+            </a>
             <span id="downloads" className="icon-chip scroll-mt-28">
               <Download size={16} />
               Downloads
@@ -22,6 +26,20 @@ export function FuturePreviewSection() {
             </span>
           </div>
         </div>
+
+        <div className="mb-6 rounded-xl border border-kcx-orange/40 bg-kcx-orange/10 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-kcx-orange">Private Beta Available</p>
+          <h3 className="mt-2 text-xl font-semibold text-white">KCx Studio Companion v0.9.0 Beta 1</h3>
+          <p className="mt-2 text-sm leading-6 text-kcx-ash">
+            Invited testers can download the Windows beta package, including installer, portable build, license, privacy notes,
+            installation guide, quick start guide, known limitations, and release notes.
+          </p>
+          <a href="/beta" className="mt-4 inline-flex items-center gap-2 rounded-md border border-kcx-orange/60 bg-kcx-orange px-4 py-2 text-sm font-bold uppercase tracking-[0.18em] text-black transition hover:brightness-110">
+            <Download size={16} />
+            Open Beta Page
+          </a>
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {futureSystems.map((system) => (
             <div key={system.route} className="future-card" aria-label={`${system.name} future page teaser`}>
