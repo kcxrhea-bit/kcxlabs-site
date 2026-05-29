@@ -1,6 +1,7 @@
-import { AlertTriangle, Download, Mail, ShieldAlert, Sparkles, Cpu, GitBranch, Zap } from "lucide-react";
+import { AlertTriangle, Brain, Download, ExternalLink, FlaskConical, HardDrive, Mail, MemoryStick, Shield, ShieldAlert, ShieldCheck, Sparkles, Cpu, Activity } from "lucide-react";
 
 const downloadHref = "https://github.com/kcxrhea-bit/KCxStudioCompanion/releases/download/v0.9.5-beta/KCxStudioCompanion-v0.9.5-beta.zip";
+const releaseHref = "https://github.com/kcxrhea-bit/KCxStudioCompanion/releases/tag/v0.9.5-beta";
 
 const installSteps = [
   "Download the ZIP",
@@ -23,22 +24,42 @@ const features = [
   {
     icon: Cpu,
     title: "Cortex Runtime",
-    description: "Local AI orchestration brain with sandboxed execution, manual approval queue, and SERA policy enforcement.",
+    description: "Local AI orchestration brain powering sandboxed execution, provider telemetry, and real-time project awareness.",
   },
   {
-    icon: Zap,
-    title: "Autonomous Build Loop",
-    description: "Cortex watches for build failures, summarizes via Ollama/phi3, and auto-queues a fix prompt for your review.",
+    icon: Brain,
+    title: "Embedded KCxModeAI",
+    description: "Fully embedded KCxModeAI brain runtime — classifies task type, detects rewrite risk, and produces structured safe guidance.",
   },
   {
-    icon: GitBranch,
-    title: "Spec Intake",
-    description: "Describe a feature in plain language — Cortex reads your project structure and generates a Claude Code implementation prompt.",
+    icon: Shield,
+    title: "KCxSERA Foundation",
+    description: "Post-SERA policy enforcement layer governing all AI-initiated actions before they reach execution.",
   },
   {
-    icon: Sparkles,
-    title: "Smart Brain Normalizer",
-    description: "Classifies task type, detects rewrite risk, sanitizes vague prompts, and produces structured safe implementation guidance.",
+    icon: ShieldCheck,
+    title: "Approval Queue",
+    description: "Every AI-proposed action passes through the manual approval queue before execution. Nothing runs without your sign-off.",
+  },
+  {
+    icon: FlaskConical,
+    title: "Execution Sandbox",
+    description: "Isolated execution environment ensures AI actions cannot affect system state outside the declared project scope.",
+  },
+  {
+    icon: MemoryStick,
+    title: "Project-Scoped Memory",
+    description: "Persistent memory anchored to each project — context survives sessions without leaking across project boundaries.",
+  },
+  {
+    icon: Activity,
+    title: "Provider Telemetry",
+    description: "Real-time visibility into provider calls, latency, and model selection across every Cortex operation.",
+  },
+  {
+    icon: HardDrive,
+    title: "Valhalla Diagnostics",
+    description: "Built-in diagnostic runtime for surfacing internal state, execution traces, and Cortex health at a glance.",
   },
 ];
 
@@ -49,15 +70,16 @@ export function BetaPage() {
         <div>
           <div className="mb-5 inline-flex items-center gap-2 border border-kcx-cyan/30 bg-kcx-cyan/10 px-3 py-2 text-[0.7rem] font-bold uppercase tracking-[0.2em] text-kcx-cyan">
             <Sparkles size={15} />
-            Private Beta — Post-SERA Milestone
+            Private Beta — Post-SERA + Embedded KCxModeAI Runtime
           </div>
           <h1 id="beta-title" className="max-w-4xl text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
             KCx Studio Companion — Private Beta
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-8 text-kcx-ash sm:text-lg">
-            Early access build for invited KCx Labs testers on Windows 10/11 x64. This milestone includes
-            the full Cortex runtime, autonomous build loop, spec intake, and Smart Brain intelligence layer —
-            running entirely local-first with no cloud dependencies required.
+            Early access build for invited KCx Labs testers on Windows 10/11 x64. This milestone ships the
+            embedded KCxModeAI brain runtime, KCxSERA policy foundation, approval queue, execution sandbox,
+            project-scoped memory, provider telemetry, and Valhalla diagnostics — all running local-first
+            with 263/263 tests passing and a clean production build.
           </p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -78,10 +100,16 @@ export function BetaPage() {
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a href={downloadHref} className="button-primary focus-ring">
               <Download size={18} />
-              Download ZIP
+              Download Private Beta
             </a>
-            <a href="mailto:beta@kcxlabs.org" className="button-secondary focus-ring">
-              <Mail size={18} />
+            <a href={releaseHref} target="_blank" rel="noopener noreferrer" className="button-secondary focus-ring">
+              <ExternalLink size={18} />
+              View GitHub Release
+            </a>
+          </div>
+          <div className="mt-4">
+            <a href="mailto:beta@kcxlabs.org" className="inline-flex items-center gap-2 text-sm text-kcx-ash hover:text-kcx-steel transition-colors">
+              <Mail size={14} />
               beta@kcxlabs.org
             </a>
           </div>
@@ -115,7 +143,7 @@ export function BetaPage() {
 
       <div className="mx-auto mt-10 max-w-6xl">
         <h2 className="mb-6 text-xl font-semibold text-white">What's in this build</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
           {features.map((f) => (
             <div key={f.title} className="studio-panel p-5">
               <f.icon size={20} className="text-kcx-cyan" />
