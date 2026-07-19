@@ -21,4 +21,16 @@ await Promise.all([
     format: "cjs",
     outfile: "dist-electron/preload.cjs",
   }),
+  build({
+    ...shared,
+    entryPoints: ["electron/project-discovery.ts"],
+    format: "cjs",
+    outfile: "dist-electron/project-discovery.cjs",
+  }),
+  build({
+    ...shared,
+    entryPoints: ["electron/platform-service.ts"],
+    format: "cjs",
+    outfile: "dist-electron/platform-service.cjs",
+  }),
 ]);

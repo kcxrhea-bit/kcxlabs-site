@@ -18,6 +18,9 @@ This repository contains the official KCx Labs website and its Electron-based de
 
 - Public website: existing homepage and `/beta` route
 - Desktop: isolated Electron shell, typed preload bridge, project catalog, release validator/publisher, website build/preview, deployment readiness, theme sync, activity, and settings surfaces
+- Projects: select a trusted root folder and scan its subfolders for common project manifests. Scan results are review-only until explicitly loaded and registered.
+- Website candidates: choose individual discovered projects or use **Add all projects to website**. Both routes show additions/removals first and require **Approve website changes** plus a native confirmation before metadata is changed.
+- Import workflow: browse or drag project folders, ZIP/EXE/MSI release artifacts, and `.patch`/`.diff` files. Release publishing is a guided three-step preview-and-confirm workflow; patch import remains separate.
 - Releases require a native confirmation before a file is copied or website metadata changes. Deployment is never automatic.
 
 ## Core Ecosystem Systems
@@ -80,6 +83,10 @@ npm.cmd run preview
 Primary deployment target: **Vercel**
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment settings.
+
+## Using the desktop app
+
+See [USER_GUIDE.md](./USER_GUIDE.md) for the complete desktop workflow, including project scanning, website-change approval, release previews, website preview, deployment readiness, and theme sync.
 
 ## Contact
 

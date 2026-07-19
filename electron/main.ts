@@ -6,6 +6,7 @@ import type { DesktopStatus, NewCatalogProject, ReleaseDraft } from "../src/shar
 import { createCatalogService } from "./catalog-service";
 import { previewRelease } from "./release-planner";
 import { PlatformService } from "./platform-service";
+import { scanForProjects } from "./project-discovery";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -55,6 +56,25 @@ app.whenReady().then(() => {
   const platform = new PlatformService(app.getAppPath(), app.getPath("userData"));
   ipcMain.handle(desktopIpcChannels.listProjects, () => catalog.list());
   ipcMain.handle(desktopIpcChannels.addProject, (_event, input: NewCatalogProject) => catalog.add(input));
+  ipcMain.handle(desktopIpcChannels.chooseProjectFolder, async () => {
+    if (!mainWindow) return null;
+    const selection = await dialog.showOpenDialog(mainWindow, { title: "Choose project folder", properties: ["openDirectory"] });
+    return selection.canceled ? null : selection.filePaths[0];
+  });
+  ipcMain.handle(desktopIpcChannels.chooseProjectScanRoot, async () => {
+    if (!mainWindow) return null;
+    const selection = await dialog.showOpenDialog(mainWindow, { title: "Choose a folder to scan for projects", properties: ["openDirectory"] });
+    return selection.canceled ? null : selection.filePaths[0];
+  });
+  ipcMain.handle(desktopIpcChannels.scanProjects, (_event, root: string) => scanForProjects(root));
+  ipcMain.handle(desktopIpcChannels.getWebsiteProducts, () => platform.getWebsiteProducts());
+  ipcMain.handle(desktopIpcChannels.previewWebsiteChange, (_event, change) => platform.previewWebsiteChange(change));
+  ipcMain.handle(desktopIpcChannels.applyWebsiteChange, async (_event, change) => {
+    const preview = await platform.previewWebsiteChange(change);
+    if (!preview.canApply) return { ok: false, message: preview.warnings.join(" ") || "No changes to apply." };
+    const confirmation = await dialog.showMessageBox(mainWindow!, { type: "warning", buttons: ["Cancel", "Approve website changes"], defaultId: 0, cancelId: 0, message: "Apply website changes?", detail: `${preview.additions.length} additions and ${preview.removals.length} removals will be applied. A backup will be created first.` });
+    return confirmation.response === 1 ? platform.applyWebsiteChange(change) : { ok: false, message: "Website changes cancelled." };
+  });
   ipcMain.handle(desktopIpcChannels.chooseArtifact, async () => {
     if (!mainWindow) return null;
     const selection = await dialog.showOpenDialog(mainWindow, {
@@ -63,6 +83,19 @@ app.whenReady().then(() => {
       filters: [{ name: "Release artifacts", extensions: ["exe", "msi", "zip"] }, { name: "All files", extensions: ["*"] }],
     });
     return selection.canceled ? null : selection.filePaths[0];
+  });
+  ipcMain.handle(desktopIpcChannels.choosePatch, async () => {
+    if (!mainWindow) return null;
+    const selection = await dialog.showOpenDialog(mainWindow, { title: "Choose patch file", properties: ["openFile"], filters: [{ name: "Patch files", extensions: ["patch", "diff"] }] });
+    return selection.canceled ? null : selection.filePaths[0];
+  });
+  ipcMain.handle(desktopIpcChannels.previewPatch, async (_event, id: string, path: string) => platform.previewPatch((await catalog.list()).find((project) => project.id === id), path));
+  ipcMain.handle(desktopIpcChannels.importPatch, async (_event, id: string, path: string) => {
+    const project = (await catalog.list()).find((candidate) => candidate.id === id);
+    const preview = await platform.previewPatch(project, path);
+    if (!preview.isValid) return { ok: false, message: preview.errors.join(" ") };
+    const confirmation = await dialog.showMessageBox(mainWindow!, { type: "warning", buttons: ["Cancel", "Import patch"], defaultId: 0, cancelId: 0, message: `Import ${preview.fileName}?`, detail: "The patch is stored separately from release artifacts. An overwrite backup is created first." });
+    return confirmation.response === 1 ? platform.importPatch(project, path) : { ok: false, message: "Patch import cancelled." };
   });
   ipcMain.handle(desktopIpcChannels.previewRelease, async (_event, draft: ReleaseDraft) => {
     const project = (await catalog.list()).find((candidate) => candidate.id === draft.projectId);
