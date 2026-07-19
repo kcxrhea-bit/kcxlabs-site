@@ -1,0 +1,37 @@
+.desktop-app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  color: #e7edf2;
+  background: #050506;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.desktop-nav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(18, 18, 20, 0.98), rgba(5, 5, 6, 0.98));
+  padding: 1.4rem 1rem;
+}
+
+.desktop-brand, .desktop-nav-item, .desktop-status, .desktop-action { display: inline-flex; align-items: center; gap: 0.6rem; }
+.desktop-brand { font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #ff7a1a; }
+.desktop-kicker { margin: 0; color: #8e9197; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
+.desktop-nav .desktop-kicker { margin: 1.5rem 0 0.45rem; }
+.desktop-nav-item { width: 100%; border: 1px solid transparent; background: transparent; color: #b8bec6; padding: 0.7rem 0.75rem; text-align: left; font: inherit; font-size: 0.83rem; cursor: pointer; }
+.desktop-nav-item:hover { border-color: rgba(255, 122, 26, 0.24); color: #fff; background: rgba(255, 255, 255, 0.035); }
+.desktop-nav-item-active { border-color: rgba(255, 122, 26, 0.35); background: linear-gradient(90deg, rgba(255, 122, 26, 0.16), rgba(255, 122, 26, 0.025)); color: #fff; }
+.desktop-nav-footer { margin-top: auto; color: #656971; font-size: 0.72rem; }
+
+.desktop-workspace { position: relative; isolation: isolate; overflow: hidden; padding: 2rem clamp(1.5rem, 4vw, 4.75rem) 4rem; }
+.desktop-art { position: absolute; z-index: -2; inset: 0; background: linear-gradient(90deg, rgba(5,5,6,0.98) 0%, rgba(5,5,6,0.7) 42%, rgba(5,5,6,0.5)), linear-gradient(0deg, #050506, transparent 55%), url("/desktop/KCxPCTransparent.png") right center / min(86vw, 105rem) auto no-repeat; opacity: 0.9; }
+.desktop-workspace::before { content: ""; position: absolute; z-index: -1; inset: 0; background-image: linear-gradient(rgba(231,237,242,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(231,237,242,0.07) 1px, transparent 1px); background-size: 44px 44px; mask-image: linear-gradient(90deg, black, transparent 80%); opacity: 0.34; }
+.desktop-header { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 2.25rem; }.desktop-header h1 { margin: 0.3rem 0 0; font-size: clamp(2rem, 4vw, 3.3rem); letter-spacing: -0.04em; }.desktop-status { border: 1px solid rgba(55,213,255,0.3); background: rgba(5,5,6,0.6); padding: 0.55rem 0.75rem; color: #d7f7ff; font-size: 0.75rem; }.desktop-status i { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: #37d5ff; box-shadow: 0 0 12px #37d5ff; }
+.desktop-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0.9rem; max-width: 76rem; }.desktop-card { border: 1px solid rgba(255,255,255,0.12); background: linear-gradient(145deg, rgba(18,18,20,0.93), rgba(5,5,6,0.82)); box-shadow: inset 0 1px rgba(255,255,255,0.07), 0 16px 48px rgba(0,0,0,0.22); backdrop-filter: blur(14px); }.desktop-telemetry { padding: 1.1rem; }.desktop-telemetry p { margin: 0 0 0.6rem; color: #9da2a9; font-size: 0.75rem; }.desktop-telemetry strong { font-size: 1rem; }.healthy { color: #66dfb5; }.neutral { color: #e7edf2; }
+.desktop-primary-card, .desktop-system-card { display: flex; align-items: center; justify-content: space-between; gap: 2rem; max-width: 76rem; margin-top: 1rem; padding: clamp(1.4rem, 3vw, 2.5rem); }.desktop-primary-card { border-color: rgba(255,122,26,0.3); background: linear-gradient(105deg, rgba(46,28,17,0.93), rgba(10,10,11,0.83)); }.desktop-primary-card h2, .desktop-system-card h2 { max-width: 38rem; margin: 0.35rem 0 0.65rem; font-size: clamp(1.35rem, 2.5vw, 2rem); }.desktop-primary-card p:not(.desktop-kicker), .desktop-system-card p:not(.desktop-kicker) { max-width: 43rem; margin: 0; color: #aeb3ba; line-height: 1.55; }.desktop-action { flex: none; border: 1px solid rgba(255,122,26,0.65); background: #ff7a1a; color: #050506; padding: 0.75rem 1rem; font: inherit; font-size: 0.75rem; font-weight: 800; cursor: pointer; }.desktop-system-card { align-items: start; }.desktop-system-card dl { min-width: 11rem; margin: 0; }.desktop-system-card dl div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 0.55rem 0; font-size: 0.75rem; }.desktop-system-card dt { color: #8e9197; }.desktop-system-card dd { margin: 0; color: #37d5ff; }
+@media (max-width: 860px) { .desktop-app { grid-template-columns: 1fr; }.desktop-nav { display: none; }.desktop-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }.desktop-workspace { padding-top: 1.5rem; }.desktop-art { background-position: 62% center; } }
+@media (max-width: 560px) { .desktop-grid { grid-template-columns: 1fr; }.desktop-header, .desktop-primary-card, .desktop-system-card { align-items: flex-start; flex-direction: column; }.desktop-status { display: none; } }
