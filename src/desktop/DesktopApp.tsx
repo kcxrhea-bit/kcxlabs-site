@@ -1,102 +1,35 @@
-import { useEffect, useState } from "react";
-import {
-  Activity,
-  Boxes,
-  CloudUpload,
-  FileText,
-  FolderKanban,
-  Gauge,
-  History,
-  MonitorPlay,
-  Palette,
-  Rocket,
-  Settings,
-} from "lucide-react";
-import type { DesktopStatus } from "../shared/desktop";
+import { FormEvent, useEffect, useState } from "react";
+import { Activity, Boxes, CloudUpload, FileText, FolderKanban, Gauge, History, MonitorPlay, Palette, Rocket, Settings } from "lucide-react";
+import type { ActivityEntry, CatalogProject, DeploymentReadiness, DesktopStatus, NewCatalogProject, PreviewStatus, ReleasePreview, ThemeScan } from "../shared/desktop";
 import "./desktop.css";
 
-const navigation = [
-  [Gauge, "Dashboard"],
-  [FolderKanban, "Projects"],
-  [Rocket, "Release Publisher"],
-  [FileText, "Website"],
-  [MonitorPlay, "Website Preview"],
-  [CloudUpload, "Deployment"],
-  [Palette, "Theme Sync"],
-  [History, "Release History"],
-  [Activity, "Activity"],
-  [Settings, "Settings"],
-] as const;
-
-const telemetry = [
-  ["Website build", "Ready", "healthy"],
-  ["Deployment", "Not queued", "neutral"],
-  ["Release pipeline", "Awaiting project", "neutral"],
-  ["Theme source", "Phase 4", "neutral"],
-] as const;
+const navigation = [[Gauge, "Dashboard"], [FolderKanban, "Projects"], [Rocket, "Release Publisher"], [FileText, "Website"], [MonitorPlay, "Website Preview"], [CloudUpload, "Deployment"], [Palette, "Theme Sync"], [History, "Release History"], [Activity, "Activity"], [Settings, "Settings"]] as const;
+const initialProject: NewCatalogProject = { name: "", slug: "", folder: "", description: "", category: "", currentVersion: "", releaseChannel: "stable", websiteVisible: true, downloadVisible: true };
 
 export function DesktopApp() {
-  const [status, setStatus] = useState<DesktopStatus | null>(null);
-
-  useEffect(() => {
-    void window.kcxDesktop?.getStatus().then(setStatus);
-  }, []);
-
-  return (
-    <main className="desktop-app">
-      <aside className="desktop-nav" aria-label="Desktop navigation">
-        <div className="desktop-brand"><Boxes size={20} /> KCx Labs</div>
-        <p className="desktop-kicker">Publishing system</p>
-        <nav>
-          {navigation.map(([Icon, label], index) => (
-            <button className={index === 0 ? "desktop-nav-item desktop-nav-item-active" : "desktop-nav-item"} key={label} type="button">
-              <Icon size={17} /> {label}
-            </button>
-          ))}
-        </nav>
-        <div className="desktop-nav-footer">Desktop shell · Phase 1</div>
-      </aside>
-
-      <section className="desktop-workspace">
-        <div className="desktop-art" aria-hidden="true" />
-        <header className="desktop-header">
-          <div>
-            <p className="desktop-kicker">KCx publishing command</p>
-            <h1>Dashboard</h1>
-          </div>
-          <span className="desktop-status"><i /> Desktop connected</span>
-        </header>
-
-        <div className="desktop-grid">
-          {telemetry.map(([label, value, tone]) => (
-            <article className="desktop-card desktop-telemetry" key={label}>
-              <p>{label}</p><strong className={tone}>{value}</strong>
-            </article>
-          ))}
-        </div>
-
-        <section className="desktop-card desktop-primary-card">
-          <div>
-            <p className="desktop-kicker">Release Publisher</p>
-            <h2>The publishing pipeline starts here.</h2>
-            <p>Register a KCx project to prepare artifacts, release metadata, website updates, and deployment readiness.</p>
-          </div>
-          <button type="button" className="desktop-action">Open Projects <FolderKanban size={16} /></button>
-        </section>
-
-        <section className="desktop-card desktop-system-card">
-          <div>
-            <p className="desktop-kicker">Secure desktop architecture</p>
-            <h2>Website remains independent.</h2>
-            <p>The renderer has no Node access. Desktop capabilities are exposed only through a typed, isolated preload bridge.</p>
-          </div>
-          <dl>
-            <div><dt>Electron</dt><dd>{status?.electronVersion ?? "Connecting"}</dd></div>
-            <div><dt>App version</dt><dd>{status?.applicationVersion ?? "Connecting"}</dd></div>
-            <div><dt>Platform</dt><dd>{status?.platform ?? "Connecting"}</dd></div>
-          </dl>
-        </section>
-      </section>
-    </main>
-  );
+  const [page, setPage] = useState("Dashboard"); const [status, setStatus] = useState<DesktopStatus | null>(null); const [projects, setProjects] = useState<CatalogProject[]>([]); const [message, setMessage] = useState("Ready");
+  const refreshProjects = async () => setProjects(await window.kcxDesktop!.listProjects());
+  useEffect(() => { void window.kcxDesktop?.getStatus().then(setStatus); void refreshProjects(); }, []);
+  return <main className="desktop-app"><aside className="desktop-nav"><div className="desktop-brand"><Boxes size={20} /> KCx Labs</div><p className="desktop-kicker">Publishing system</p><nav>{navigation.map(([Icon, name]) => <button key={name} type="button" onClick={() => setPage(name)} className={page === name ? "desktop-nav-item desktop-nav-item-active" : "desktop-nav-item"}><Icon size={17} />{name}</button>)}</nav><div className="desktop-nav-footer">{message}</div></aside><section className="desktop-workspace"><div className="desktop-art" aria-hidden="true" /><header className="desktop-header"><div><p className="desktop-kicker">KCx Labs publishing platform</p><h1>{page}</h1></div><span className="desktop-status"><i /> {status ? "Desktop connected" : "Connecting"}</span></header><Page page={page} projects={projects} refreshProjects={refreshProjects} setMessage={setMessage} /></section></main>;
 }
+
+function Page({ page, projects, refreshProjects, setMessage }: { page: string; projects: CatalogProject[]; refreshProjects: () => Promise<void>; setMessage: (value: string) => void }) {
+  if (page === "Projects") return <Projects projects={projects} refresh={refreshProjects} setMessage={setMessage} />;
+  if (page === "Release Publisher") return <Publisher projects={projects} setMessage={setMessage} />;
+  if (page === "Website") return <Website setMessage={setMessage} />;
+  if (page === "Website Preview") return <Preview setMessage={setMessage} />;
+  if (page === "Deployment") return <Deployment setMessage={setMessage} />;
+  if (page === "Theme Sync") return <Theme projects={projects} setMessage={setMessage} />;
+  if (page === "Activity" || page === "Release History") return <Log releaseOnly={page === "Release History"} setMessage={setMessage} />;
+  if (page === "Settings") return <Panel title="Settings"><p>Settings are stored locally in Electron user data. Publishing has no automatic deployment; website and project paths remain under explicit operator control.</p></Panel>;
+  return <><div className="desktop-grid"><Card label="Projects" value={String(projects.length)} /><Card label="Website" value="Ready" /><Card label="Deployment" value="Manual" /><Card label="Theme engine" value="Ready" /></div><Panel title="Publishing workflow"><p>Register a project, validate an artifact, build the website, review readiness, then explicitly perform publish/deployment actions.</p></Panel></>;
+}
+function Card({ label, value }: { label: string; value: string }) { return <article className="desktop-card desktop-telemetry"><p>{label}</p><strong>{value}</strong></article>; }
+function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <section className="desktop-card desktop-primary-card"><div><p className="desktop-kicker">Operational module</p><h2>{title}</h2>{children}</div></section>; }
+function Projects({ projects, refresh, setMessage }: { projects: CatalogProject[]; refresh: () => Promise<void>; setMessage: (value: string) => void }) { const [draft, setDraft] = useState(initialProject); const [busy, setBusy] = useState(false); const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); try { await window.kcxDesktop!.addProject(draft); await refresh(); setDraft(initialProject); setMessage("Project registered"); } catch (error) { setMessage(error instanceof Error ? error.message : "Project registration failed"); } finally { setBusy(false); } }; return <div className="desktop-panel-grid"><form onSubmit={submit} className="desktop-card desktop-form"><h2>Register project</h2><label>Name<input required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></label><label>Slug<input required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={draft.slug} onChange={e => setDraft({ ...draft, slug: e.target.value })} /></label><label>Trusted folder<input required value={draft.folder} onChange={e => setDraft({ ...draft, folder: e.target.value })} /></label><label>Description<textarea value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></label><button className="desktop-action" disabled={busy}>{busy ? "Saving" : "Register project"}</button></form><Panel title="Project catalog">{projects.length ? projects.map(project => <p key={project.id}><strong>{project.name}</strong> · <span className={project.folderStatus === "available" ? "healthy" : "missing"}>{project.folderStatus}</span><br /><small>{project.folder}</small></p>) : <p>No projects registered.</p>}</Panel></div>; }
+function Publisher({ projects, setMessage }: { projects: CatalogProject[]; setMessage: (value: string) => void }) { const [projectId, setProjectId] = useState(""); const [path, setPath] = useState(""); const [version, setVersion] = useState(""); const [title, setTitle] = useState(""); const [preview, setPreview] = useState<ReleasePreview | null>(null); const draft = { projectId, artifactPath: path, version, title, notes: "", channel: "stable" as const }; const submit = async (e: FormEvent) => { e.preventDefault(); const result = await window.kcxDesktop!.previewRelease(draft); setPreview(result); setMessage(result.isValid ? "Release preview passed; choose Publish release to confirm." : "Release preview needs attention"); }; return <div className="desktop-panel-grid"><form className="desktop-card desktop-form" onSubmit={submit}><h2>Validate release</h2><label>Project<select required value={projectId} onChange={e => setProjectId(e.target.value)}><option value="">Select project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Version<input required value={version} placeholder="1.2.3" onChange={e => setVersion(e.target.value)} /></label><label>Title<input required value={title} onChange={e => setTitle(e.target.value)} /></label><label>Artifact<button type="button" onClick={async () => { const selected = await window.kcxDesktop!.chooseArtifact(); if (selected) setPath(selected); }}>Choose artifact</button><small>{path || "No artifact selected"}</small></label><button className="desktop-action">Validate</button></form><Panel title="Release validation">{preview ? <><p>{preview.isValid ? "Validation passed" : "Validation failed"}</p>{preview.artifact && <p>{preview.artifact.name}<br /><small>{preview.artifact.sha256}</small></p>}{preview.errors.map(x => <p className="desktop-error" key={x}>{x}</p>)}{preview.operations.map(x => <p key={x}>{x}</p>)}<button className="desktop-action" disabled={!preview.isValid} onClick={async () => { const result = await window.kcxDesktop!.publishRelease(draft); setMessage(result.message); }}>Publish release</button></> : <p>Select a project and artifact to calculate SHA-256 and file size.</p>}</Panel></div>; }
+function Website({ setMessage }: { setMessage: (value: string) => void }) { const [result, setResult] = useState(""); return <Panel title="Website build"><p>Website product and release data is structured in the publishing catalog. Building never deploys.</p><button className="desktop-action" onClick={async () => { setResult("Building…"); const r = await window.kcxDesktop!.buildWebsite(); setResult(r.message); setMessage(r.message); }}>Build website</button><pre>{result}</pre></Panel>; }
+function Preview({ setMessage }: { setMessage: (value: string) => void }) { const [status, setStatus] = useState<PreviewStatus | null>(null); const refresh = async () => setStatus(await window.kcxDesktop!.getPreviewStatus()); useEffect(() => { void refresh(); }, []); return <Panel title="Website preview"><p>{status?.running ? `Running at ${status.url}` : "Stopped"}</p><button className="desktop-action" onClick={async () => { const r = status?.running ? await window.kcxDesktop!.stopWebsitePreview() : await window.kcxDesktop!.startWebsitePreview(); setStatus(r); setMessage(r.running ? "Website preview started" : "Website preview stopped"); }}>{status?.running ? "Stop preview" : "Start preview"}</button><pre>{[...(status?.stdout || []), ...(status?.stderr || [])].join("\n")}</pre></Panel>; }
+function Deployment({ setMessage }: { setMessage: (value: string) => void }) { const [state, setState] = useState<DeploymentReadiness | null>(null); return <Panel title="Deployment readiness"><p>Deployments are deliberately manual; this module only checks readiness.</p><button className="desktop-action" onClick={async () => { const r = await window.kcxDesktop!.getDeploymentReadiness(); setState(r); setMessage("Deployment readiness checked"); }}>Check readiness</button>{state && <p>Branch: {state.branch}<br />Website build: {String(state.websiteBuildReady)}<br />Vercel CLI: {String(state.vercelCliAvailable)}<br />Changes: {state.gitStatus.join(", ") || "none"}</p>}</Panel>; }
+function Theme({ projects, setMessage }: { projects: CatalogProject[]; setMessage: (value: string) => void }) { const [id, setId] = useState(""); const [scan, setScan] = useState<ThemeScan | null>(null); return <Panel title="Theme synchronization"><p>Uses KCxLabs’ own canonical theme engine. Synchronization creates a timestamped backup before every overwrite.</p><select value={id} onChange={e => setId(e.target.value)}><option value="">Select project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="desktop-action" disabled={!id} onClick={async () => { const r = await window.kcxDesktop!.scanTheme(id); setScan(r); setMessage("Theme scan complete"); }}>Scan</button>{scan && <><p>{scan.files.map(f => `${f.source}: ${f.status}`).join(" · ")}</p><button className="desktop-action" onClick={async () => { if (!window.confirm("Synchronize the canonical theme files and create backups before overwriting?")) return; const r = await window.kcxDesktop!.syncTheme(id); setMessage(r.message); setScan(await window.kcxDesktop!.scanTheme(id)); }}>Sync with backup</button></>}</Panel>; }
+function Log({ releaseOnly, setMessage }: { releaseOnly: boolean; setMessage: (value: string) => void }) { const [entries, setEntries] = useState<ActivityEntry[]>([]); const refresh = async () => { const all = await window.kcxDesktop!.getActivity(); setEntries(releaseOnly ? all.filter(e => e.action.toLowerCase().includes("release")) : all); setMessage("Activity refreshed"); }; useEffect(() => { void refresh(); }, []); return <Panel title={releaseOnly ? "Release history" : "Activity log"}><button className="desktop-action" onClick={refresh}>Refresh</button>{entries.length ? entries.map(e => <p key={e.id}><strong>{e.action}</strong> · {e.detail}<br /><small>{e.at}</small></p>) : <p>{releaseOnly ? "No published releases yet." : "No recorded activity yet."}</p>}</Panel>; }

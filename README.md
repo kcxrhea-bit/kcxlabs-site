@@ -2,7 +2,7 @@
 
 KCx Labs is a founder-built AI-assisted software ecosystem focused on connected mobile systems, desktop creator tools, local-first runtime intelligence, and companion robotics research.
 
-This repository contains the official KCx Labs website and the beginning of its desktop publishing platform. The public website remains a Vite static frontend; Electron adds desktop-only publishing capabilities without giving the website renderer Node access.
+This repository contains the official KCx Labs website and its Electron-based desktop publishing platform. The public website remains a Vite static frontend; Electron adds desktop-only publishing capabilities without giving the website renderer Node access.
 
 ## Tech Stack
 
@@ -17,8 +17,8 @@ This repository contains the official KCx Labs website and the beginning of its 
 ## Current Scope
 
 - Public website: existing homepage and `/beta` route
-- Desktop: Phase 1 Electron dashboard shell with an isolated, typed preload bridge
-- Publishing, release metadata, website preview, deployment, and theme synchronization are phased work and are not yet operational
+- Desktop: isolated Electron shell, typed preload bridge, project catalog, release validator/publisher, website build/preview, deployment readiness, theme sync, activity, and settings surfaces
+- Releases require a native confirmation before a file is copied or website metadata changes. Deployment is never automatic.
 
 ## Core Ecosystem Systems
 
@@ -59,6 +59,14 @@ Compile Electron main and preload processes:
 
 ```powershell
 npm.cmd run build:electron
+```
+
+Run validation:
+
+```powershell
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
 ```
 
 Preview production build locally:
