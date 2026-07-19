@@ -25,6 +25,13 @@ npm.cmd run build
 
 No backend services are required for this homepage deployment.
 
+## Environment variables
+
+None are required. The NEXUS Hybrid Cloud preview ships correct defaults with every variable unset. The
+optional `VITE_NEXUS_*` flags are documented in
+[docs/nexus-cloud-preview.md](./docs/nexus-cloud-preview.md). Every `VITE_*` value is inlined into the
+public bundle, so never place a secret, token, or provider API key in one.
+
 ## Desktop deployment workflow
 
 The KCxLabs desktop app only checks deployment readiness. It reports branch, uncommitted changes, website build result, and Vercel CLI availability; it never executes a Vercel deployment automatically.
