@@ -6,3 +6,8 @@ dist
 npm-debug.log*
 
 public/downloads/beta/*.zip
+
+dist-electron/
+coverage/
+release/
+*.log
