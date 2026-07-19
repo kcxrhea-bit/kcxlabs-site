@@ -1,7 +1,19 @@
 {
+  "redirects": [
+    {
+      "source": "/nexus-cloud",
+      "destination": "/nexus",
+      "permanent": true
+    },
+    {
+      "source": "/nexus-cloud/portal",
+      "destination": "/nexus/portal",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
-      "source": "/nexus-cloud/assets/(.*)",
+      "source": "/nexus/assets/(.*)",
       "destination": "/assets/$1"
     },
     {

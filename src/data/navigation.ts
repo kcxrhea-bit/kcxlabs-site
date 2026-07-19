@@ -3,7 +3,7 @@ export const navigationItems = [
   { label: "Ecosystem", href: "#ecosystem" },
   { label: "Projects", href: "#projects" },
   { label: "Robotics", href: "#robotics" },
-  { label: "Nexus Cloud", href: "/nexus-cloud" },
+  { label: "NEXUS", href: "/nexus" },
   { label: "Devlogs", href: "#devlogs" },
   { label: "Downloads", href: "#downloads" },
   { label: "Docs", href: "#docs" },

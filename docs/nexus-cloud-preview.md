@@ -32,8 +32,11 @@ the user's machine.
 
 | Route | Page | Notes |
 |---|---|---|
-| `/nexus-cloud` | `src/components/pages/NexusCloudPage.tsx` | Product page: hero, modes, architecture, privacy, roadmap |
-| `/nexus-cloud/portal` | `src/components/pages/NexusCloudPortalPage.tsx` | Portal preview, not a live console |
+| `/nexus` | `src/components/pages/NexusCloudPage.tsx` | Product page: hero, modes, architecture, privacy, roadmap |
+| `/nexus/portal` | `src/components/pages/NexusCloudPortalPage.tsx` | Portal preview, not a live console |
+
+The former `/nexus-cloud` and `/nexus-cloud/portal` paths are permanent (308) redirects to the canonical
+routes, declared in `vercel.json` ahead of the SPA catch-all. They are not duplicate pages.
 
 Routing stays dependency-free. `src/routes.ts` resolves a pathname to a `PublicRoute`; `src/App.tsx`
 renders the matching page. Unknown paths still fall back to the homepage, and the `window.kcxDesktop`
@@ -46,16 +49,16 @@ Electron switch remains the first branch in `App.tsx`.
 `loadFile()` over `file://`, where an absolute `/assets/...` path would resolve to the filesystem root
 and break the desktop app.
 
-That relative base breaks two-segment web routes. At `/nexus-cloud/portal`, the SPA rewrite serves
-`index.html`, and the browser resolves `./assets/index-*.js` against `/nexus-cloud/`, requesting
-`/nexus-cloud/assets/index-*.js`. That path does not exist, so the catch-all rewrite returns
+That relative base breaks two-segment web routes. At `/nexus/portal`, the SPA rewrite serves
+`index.html`, and the browser resolves `./assets/index-*.js` against `/nexus/`, requesting
+`/nexus/assets/index-*.js`. That path does not exist, so the catch-all rewrite returns
 `index.html` with `content-type: text/html` for a script request — the browser refuses to execute it and
 the page renders blank. (`/beta` is unaffected: one segment deep, assets still resolve against `/`.)
 
 One rewrite was added ahead of the catch-all to map those nested asset requests back to the real files:
 
 ```json
-{ "source": "/nexus-cloud/assets/(.*)", "destination": "/assets/$1" }
+{ "source": "/nexus/assets/(.*)", "destination": "/assets/$1" }
 ```
 
 Verified by serving `dist/` through a simulation of Vercel's rule order: without the rule the script

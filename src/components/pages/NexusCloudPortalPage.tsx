@@ -19,9 +19,9 @@ export function NexusCloudPortalPage() {
     <section className="section-shell pt-32 lg:pt-36" aria-labelledby="portal-title">
       <div className="mx-auto max-w-5xl">
         <nav aria-label="Breadcrumb" className="mb-6">
-          <a href={publicRoutePaths["nexus-cloud"]} className="footer-link justify-start focus-ring">
+          <a href={publicRoutePaths.nexus} className="footer-link justify-start focus-ring">
             <ArrowLeft size={16} aria-hidden="true" />
-            Back to KCx NEXUS Hybrid Cloud
+            Back to KCx NEXUS
           </a>
         </nav>
 
@@ -33,12 +33,12 @@ export function NexusCloudPortalPage() {
           id="portal-title"
           className="text-4xl font-semibold leading-tight text-white sm:text-5xl"
         >
-          KCx NEXUS Cloud Portal
+          KCx NEXUS Portal
         </h1>
 
         <p className="mt-6 max-w-2xl text-base leading-8 text-kcx-ash">
-          A preview of the portal that will manage cloud sessions once cloud services exist. It is a
-          description of planned surface area, not a live console.
+          A preview of the portal that will manage authenticated remote sessions once the Remote Local relay
+          exists. It is a description of planned surface area, not a live console.
         </p>
 
         <div
@@ -47,8 +47,8 @@ export function NexusCloudPortalPage() {
         >
           <AlertTriangle className="mt-1 shrink-0 text-kcx-orange" size={20} aria-hidden="true" />
           <p className="text-sm leading-7 text-kcx-steel">
-            Cloud services are currently under development. This preview does not connect to a production
-            cloud backend.
+            Remote access is under development. This preview does not connect to a relay, a backend, or your
+            PC, and it displays no live devices, sessions, projects, or usage.
           </p>
         </div>
 
@@ -62,7 +62,7 @@ export function NexusCloudPortalPage() {
             <dd className="mt-2 block font-mono text-kcx-steel">{service.mode}</dd>
           </div>
           <div className="micro-panel">
-            <dt className="block text-kcx-ash">Cloud backend</dt>
+            <dt className="block text-kcx-ash">Relay</dt>
             <dd className="mt-2 block font-mono text-kcx-steel">
               {service.backendConfigured ? "configured" : "not configured"}
             </dd>
@@ -73,21 +73,21 @@ export function NexusCloudPortalPage() {
           <CapabilityList
             titleId="portal-verified-title"
             title="Current verified capabilities"
-            description="Local Mode features validated on real hardware. These work today and do not depend on any cloud service."
+            description="Local Mode features validated on real hardware. These work on your private network today and depend on no remote service."
             features={verifiedCapabilities}
           />
           <CapabilityList
             titleId="portal-planned-title"
-            title="Planned cloud capabilities"
-            description="Design targets for future phases. None of these are implemented, and none can be switched on today."
+            title="Planned capabilities"
+            description="Design targets for the Remote Local relay and beyond. None are implemented, and none can be switched on today."
             features={plannedCloudCapabilities}
           />
         </div>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <a href={publicRoutePaths["nexus-cloud"]} className="button-secondary focus-ring">
+          <a href={publicRoutePaths.nexus} className="button-secondary focus-ring">
             <ArrowLeft size={18} aria-hidden="true" />
-            Hybrid Cloud Overview
+            NEXUS Overview
           </a>
           <a href="/" className="button-secondary focus-ring">
             <Home size={18} aria-hidden="true" />

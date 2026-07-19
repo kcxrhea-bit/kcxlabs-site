@@ -17,8 +17,9 @@ This repository contains the official KCx Labs website and its Electron-based de
 ## Current Scope
 
 - Public website: existing homepage, `/beta` route, and the KCx NEXUS Hybrid Cloud preview at
-  `/nexus-cloud` and `/nexus-cloud/portal`. NEXUS Local Mode is available today; Cloud and Hybrid modes
-  are in development or planned. See [docs/nexus-cloud-preview.md](./docs/nexus-cloud-preview.md).
+  `/nexus` and `/nexus/portal` (the former `/nexus-cloud` paths redirect there). NEXUS Local Mode works
+  today on your own private network via the Android client; reaching NEXUS over the public internet is not
+  available. See [docs/nexus-cloud-preview.md](./docs/nexus-cloud-preview.md).
 - Desktop: isolated Electron shell, typed preload bridge, project catalog, release validator/publisher, website build/preview, deployment readiness, theme sync, activity, and settings surfaces
 - Projects: select a trusted root folder and scan its subfolders for common project manifests. Scan results are review-only until explicitly loaded and registered.
 - Website candidates: choose individual discovered projects or use **Add all projects to website**. Both routes show additions/removals first and require **Approve website changes** plus a native confirmation before metadata is changed.

@@ -24,9 +24,9 @@ export default function App() {
     <AppShell>
       {route === "beta" ? (
         <BetaPage />
-      ) : route === "nexus-cloud" ? (
+      ) : route === "nexus" ? (
         <NexusCloudPage />
-      ) : route === "nexus-cloud-portal" ? (
+      ) : route === "nexus-portal" ? (
         <NexusCloudPortalPage />
       ) : (
         <>

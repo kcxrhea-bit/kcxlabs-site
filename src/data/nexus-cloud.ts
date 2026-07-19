@@ -43,10 +43,11 @@ export const nexusModes: NexusMode[] = [
     state: "verified",
     icon: Cpu,
     summary:
-      "The Android companion talks to your own machine. Model execution and project files stay on hardware you control.",
+      "The Android companion talks to your own machine over your private network. Model execution and project files stay on hardware you control.",
     points: [
       "Runs through your own KCxLocalAI installation.",
-      "Connects over the private NEXUS Mirror gateway after a secure one-time pairing.",
+      "Phone and PC must be on the same private network — this is a LAN client, not remote access.",
+      "Connects over the private NEXUS Mirror gateway after a secure one-time pairing. The gateway is never exposed to the public internet.",
       "Reads only projects you have explicitly approved, from a path-validated registry.",
       "Model execution and project files remain on your machine.",
       "Project-aware chat answers questions against the approved project set.",
@@ -71,7 +72,7 @@ export const nexusModes: NexusMode[] = [
       "Any cloud-stored data only through explicit future approval.",
     ],
     caveat:
-      "Cloud Mode is not yet active. There is no cloud backend, no account system, and no way to switch it on today.",
+      "Cloud Mode is not yet active. There is no cloud backend, no relay, no account system, and no way to switch it on today.",
   },
   {
     id: "automatic",
@@ -116,8 +117,8 @@ export const architectureNodes: ArchitectureNode[] = [
   },
   {
     id: "local-route",
-    label: "Local route",
-    detail: "Working today.",
+    label: "Local route (private network)",
+    detail: "Working today, phone and PC on the same network.",
     availability: "current",
     depth: 1,
     icon: Radio,
@@ -140,8 +141,8 @@ export const architectureNodes: ArchitectureNode[] = [
   },
   {
     id: "cloud-route",
-    label: "Future cloud route",
-    detail: "Not implemented.",
+    label: "Future remote route",
+    detail: "Not implemented. No relay, no authenticated session, no public-internet path exists.",
     availability: "future",
     depth: 1,
     icon: Cloud,
@@ -172,6 +173,8 @@ export const privacyBoundaries: string[] = [
   "Provider API secrets are not placed in the Android application.",
   "Local Mode remains usable without a cloud subscription or cloud connection.",
   "The private gateway is not exposed directly to the public internet.",
+  "Reaching NEXUS from outside your network is not available; no relay or authenticated session exists yet.",
+  "The public website pages are informational and never connect to your PC.",
 ];
 
 export type RoadmapStage = {
@@ -197,36 +200,43 @@ export const roadmapStages: RoadmapStage[] = [
   },
   {
     order: 3,
+    name: "Remote Local Relay and Authenticated Portal",
+    state: "planned",
+    detail:
+      "Reaching your own PC from outside your network, behind a sign-in. Not built: no relay, no session, no device registration.",
+  },
+  {
+    order: 4,
     name: "Private Cloud Preview",
     state: "planned",
     detail: "A closed preview of cloud-hosted inference, limited to invited devices.",
   },
   {
-    order: 4,
+    order: 5,
     name: "Cloud Accounts and Device Registration",
     state: "planned",
     detail: "Identity and device pairing for cloud sessions.",
   },
   {
-    order: 5,
+    order: 6,
     name: "General Cloud Chat",
     state: "planned",
     detail: "NEXUS chat that works while the home PC is offline.",
   },
   {
-    order: 6,
+    order: 7,
     name: "Automatic Local/Cloud Selection",
     state: "planned",
     detail: "Hybrid routing with a visible indicator of which path answered.",
   },
   {
-    order: 7,
+    order: 8,
     name: "Explicit Approved Project Snapshots",
     state: "future",
     detail: "Opt-in, per-project snapshots. Never automatic.",
   },
   {
-    order: 8,
+    order: 9,
     name: "Broader Device Synchronization",
     state: "future",
     detail: "Multi-device continuity, subject to the same explicit-approval rules.",

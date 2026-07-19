@@ -13,6 +13,7 @@ const config = await read("src/cloud/config.ts");
 const data = await read("src/data/nexus-cloud.ts");
 const productPage = await read("src/components/pages/NexusCloudPage.tsx");
 const portalPage = await read("src/components/pages/NexusCloudPortalPage.tsx");
+const navigation = await read("src/data/navigation.ts");
 const vercelConfig = JSON.parse(await read("vercel.json"));
 
 /**
@@ -20,10 +21,10 @@ const vercelConfig = JSON.parse(await read("vercel.json"));
  * rather than by reading source. `import.meta.env` is defined as an empty
  * object, which reproduces a build with no VITE_* variables set at all.
  */
-async function loadCloudModule() {
-  const outfile = join(tmpdir(), `kcx-nexus-cloud-${process.pid}.cjs`);
+async function loadModule(entry, tag) {
+  const outfile = join(tmpdir(), `kcx-nexus-${tag}-${process.pid}.cjs`);
   await build({
-    entryPoints: [new URL("../src/cloud/index.ts", import.meta.url).pathname.replace(/^\//, "")],
+    entryPoints: [new URL(`../${entry}`, import.meta.url).pathname.replace(/^\//, "")],
     bundle: true,
     format: "cjs",
     platform: "node",
@@ -37,19 +38,78 @@ async function loadCloudModule() {
   return module;
 }
 
-const cloud = await loadCloudModule();
+const cloud = await loadModule("src/cloud/index.ts", "cloud");
+const router = await loadModule("src/routes.ts", "routes");
 
 // ---------------------------------------------------------------- routing
 
-test("public routes resolve for nexus cloud, portal, and beta", () => {
-  assert.equal(cloud === undefined, false);
-  assert.match(routes, /case "\/nexus-cloud":/);
-  assert.match(routes, /case "\/nexus-cloud\/portal":/);
-  assert.match(routes, /case "\/beta":/);
+test("/nexus and /nexus/portal are the canonical public routes", () => {
+  assert.equal(router.resolvePublicRoute("/nexus"), "nexus");
+  assert.equal(router.resolvePublicRoute("/nexus/portal"), "nexus-portal");
+  // Trailing slashes and casing must not change the destination.
+  assert.equal(router.resolvePublicRoute("/nexus/"), "nexus");
+  assert.equal(router.resolvePublicRoute("/Nexus/Portal/"), "nexus-portal");
+  assert.equal(router.publicRoutePaths.nexus, "/nexus");
+  assert.equal(router.publicRoutePaths["nexus-portal"], "/nexus/portal");
 });
 
-test("unknown paths still fall back to the homepage", () => {
+test("/beta still resolves and unknown paths still fall back to the homepage", () => {
+  assert.equal(router.resolvePublicRoute("/beta"), "beta");
+  assert.equal(router.publicRoutePaths.beta, "/beta");
+  assert.equal(router.resolvePublicRoute("/"), "home");
+  assert.equal(router.resolvePublicRoute("/does-not-exist"), "home");
   assert.match(routes, /default:\s*\n\s*return "home";/);
+});
+
+test("legacy /nexus-cloud paths redirect permanently to the canonical routes", () => {
+  const redirects = vercelConfig.redirects ?? [];
+  const bySource = Object.fromEntries(redirects.map((rule) => [rule.source, rule]));
+
+  assert.equal(bySource["/nexus-cloud"].destination, "/nexus");
+  assert.equal(bySource["/nexus-cloud"].permanent, true);
+  assert.equal(bySource["/nexus-cloud/portal"].destination, "/nexus/portal");
+  assert.equal(bySource["/nexus-cloud/portal"].permanent, true);
+
+  // The resolver keeps recognising them only as a local-preview safety net,
+  // never as a second canonical path.
+  assert.equal(router.resolvePublicRoute("/nexus-cloud"), "nexus");
+  assert.equal(router.resolvePublicRoute("/nexus-cloud/portal"), "nexus-portal");
+  assert.deepEqual(router.legacyRoutePaths, {
+    "/nexus-cloud": "/nexus",
+    "/nexus-cloud/portal": "/nexus/portal",
+  });
+});
+
+test("redirects are declared before the SPA catch-all rewrite", () => {
+  // Vercel evaluates redirects ahead of rewrites, so a legacy URL never reaches
+  // the catch-all. Assert both that redirects exist and that the catch-all is
+  // still last among rewrites.
+  assert.ok((vercelConfig.redirects ?? []).length > 0, "redirects must be declared");
+  assert.equal(vercelConfig.rewrites.at(-1).source, "/(.*)");
+  assert.equal(vercelConfig.rewrites.at(-1).destination, "/index.html");
+  const catchAllIndex = vercelConfig.rewrites.findIndex((rule) => rule.source === "/(.*)");
+  assert.equal(catchAllIndex, vercelConfig.rewrites.length - 1);
+});
+
+test("canonical nested deep links keep their assets resolvable", () => {
+  // vite builds with base "./" for Electron, so /nexus/portal resolves assets
+  // against /nexus/. Without this rule the catch-all would return index.html
+  // for a script request.
+  const sources = vercelConfig.rewrites.map((rule) => rule.source);
+  assert.ok(sources.includes("/nexus/assets/(.*)"));
+  assert.ok(!sources.includes("/nexus-cloud/assets/(.*)"), "the legacy asset rewrite must be removed");
+});
+
+test("no internal link still points at a legacy path", () => {
+  for (const [name, source] of [
+    ["src/App.tsx", app],
+    ["src/data/navigation.ts", navigation],
+    ["src/components/pages/NexusCloudPage.tsx", productPage],
+    ["src/components/pages/NexusCloudPortalPage.tsx", portalPage],
+  ]) {
+    assert.doesNotMatch(source, /href=["'`]\/nexus-cloud/, name);
+  }
+  assert.match(navigation, /href: "\/nexus"/);
 });
 
 test("App renders each public route and keeps the Electron switch first", () => {
@@ -57,14 +117,6 @@ test("App renders each public route and keeps the Electron switch first", () => 
   assert.match(app, /<BetaPage \/>/);
   assert.match(app, /<NexusCloudPage \/>/);
   assert.match(app, /<NexusCloudPortalPage \/>/);
-});
-
-test("nested portal assets are rewritten so deep links load the bundle", () => {
-  const sources = vercelConfig.rewrites.map((rule) => rule.source);
-  assert.ok(sources.includes("/nexus-cloud/assets/(.*)"));
-  // The SPA catch-all must remain, and must remain last.
-  assert.equal(vercelConfig.rewrites.at(-1).source, "/(.*)");
-  assert.equal(vercelConfig.rewrites.at(-1).destination, "/index.html");
 });
 
 // ------------------------------------------------------------ truthfulness
@@ -84,12 +136,43 @@ test("Cloud and Hybrid modes are never presented as available", () => {
 });
 
 test("the portal states plainly that it is not connected to a backend", () => {
-  assert.match(
-    portalPage,
-    /Cloud services are currently under development\./,
-  );
-  assert.match(portalPage, /does not connect to a production\s*\n?\s*cloud backend/);
+  assert.match(portalPage, /Remote access is under development\./);
+  assert.match(portalPage, /does not connect to a relay, a backend, or your\s*\n?\s*PC/);
   assert.match(portalPage, /Preview \/ Not Yet Available/);
+});
+
+test("the public pages are described as informational, not a control surface", () => {
+  // A. The website itself must never read as a live console.
+  assert.match(productPage, /This page is informational/);
+  assert.match(productPage, /does not connect to any PC/);
+  assert.match(productPage, /shows no live NEXUS data/);
+});
+
+test("the Android client is scoped to a private network, not remote access", () => {
+  // B. Local Mode must not read as evidence of public-internet access.
+  assert.match(data, /same private network — this is a LAN client, not remote access/);
+  assert.match(productPage, /local-network client, not remote access/);
+  assert.match(productPage, /needs KCx NEXUS running on your PC/);
+  // The verified Local Mode caveat still requires the PC to be running.
+  assert.match(data, /Requires your PC and gateway to be running/);
+});
+
+test("public-internet remote access is never presented as available", () => {
+  // C. The relay and authenticated portal are future work in every surface.
+  assert.match(productPage, /Remote Access Not Available/);
+  assert.match(data, /name: "Remote Local Relay and Authenticated Portal",\s*\n\s*state: "planned"/);
+  assert.match(data, /Not built: no relay, no session, no device registration\./);
+  assert.match(data, /Reaching NEXUS from outside your network is not available/);
+
+  for (const [name, source] of [
+    ["NexusCloudPage", productPage],
+    ["NexusCloudPortalPage", portalPage],
+    ["nexus-cloud data", data],
+  ]) {
+    assert.doesNotMatch(source, /remote access is (now )?(live|available|operational)/i, name);
+    assert.doesNotMatch(source, /connect from anywhere|access from anywhere|worldwide access/i, name);
+    assert.doesNotMatch(source, /public relay|cloud access is available/i, name);
+  }
 });
 
 test("the portal shows no fabricated devices, projects, usage, or sessions", () => {

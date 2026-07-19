@@ -1,4 +1,4 @@
-import { ArrowUpRight, Cpu, LayoutDashboard, Lock, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, Cpu, Info, LayoutDashboard, Lock, ShieldCheck } from "lucide-react";
 import { ArchitectureDiagram } from "../nexus-cloud/ArchitectureDiagram";
 import { ModeCard } from "../nexus-cloud/ModeCard";
 import { RoadmapList } from "../nexus-cloud/RoadmapList";
@@ -16,7 +16,8 @@ export function NexusCloudPage() {
       <section className="section-shell pt-32 lg:pt-36" aria-labelledby="nexus-cloud-title">
         <div className="mx-auto max-w-4xl">
           <div className="mb-6 flex flex-wrap gap-3">
-            <StatusBadge label="Local Mode Available" tone="verified" />
+            <StatusBadge label="Local Mode Available On Your Network" tone="verified" />
+            <StatusBadge label="Remote Access Not Available" tone="planned" />
             <StatusBadge label="Cloud Preview" tone="development" />
             <StatusBadge label="Hybrid Mode Planned" tone="planned" />
           </div>
@@ -25,27 +26,36 @@ export function NexusCloudPage() {
             id="nexus-cloud-title"
             className="text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl"
           >
-            KCx NEXUS Hybrid Cloud
+            KCx NEXUS
           </h1>
 
           <p className="mt-6 max-w-2xl text-base leading-8 text-kcx-ash sm:text-lg">
-            Local intelligence works today. The Android companion pairs with your own machine, runs models
-            through your KCxLocalAI installation, and answers questions about projects you have approved —
-            all without leaving hardware you control.
+            Local intelligence works today. The Android companion connects to your own machine over your
+            private network, runs models through your KCxLocalAI installation, and answers questions about
+            projects you have approved — all without leaving hardware you control.
           </p>
           <p className="mt-4 max-w-2xl text-base leading-8 text-kcx-ash">
-            Cloud capability is under development and hybrid operation is planned. Neither is active yet.
-            This page describes what exists today and what is still being built, without blurring the two.
+            That is a local-network client, not remote access. It needs KCx NEXUS running on your PC and
+            your phone on the same private network. Reaching NEXUS over the public internet is a separate,
+            unbuilt capability.
           </p>
+
+          <div className="mt-6 flex items-start gap-3 border border-kcx-cyan/30 bg-kcx-cyan/10 p-4" role="note">
+            <Info className="mt-1 shrink-0 text-kcx-cyan" size={20} aria-hidden="true" />
+            <p className="text-sm leading-7 text-kcx-steel">
+              This page is informational. It is not a control surface, it does not connect to any PC, and it
+              shows no live NEXUS data. Nothing here reads or exposes local projects.
+            </p>
+          </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <a href="#operating-modes" className="button-primary focus-ring">
               <Cpu size={18} aria-hidden="true" />
               Explore Local Mode
             </a>
-            <a href={publicRoutePaths["nexus-cloud-portal"]} className="button-secondary focus-ring">
+            <a href={publicRoutePaths["nexus-portal"]} className="button-secondary focus-ring">
               <LayoutDashboard size={18} aria-hidden="true" />
-              View Cloud Portal Preview
+              View Portal Preview
             </a>
             <a href="#roadmap" className="button-secondary focus-ring">
               <ArrowUpRight size={18} aria-hidden="true" />
