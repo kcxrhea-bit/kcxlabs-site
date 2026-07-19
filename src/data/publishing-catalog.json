@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "products": [
+    {
+      "name": "kcx-audit-manager",
+      "slug": "kcx-audit-manager",
+      "folder": "D:\\KCxProjects\\AuditManager",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-labs-site",
+      "slug": "kcx-labs-site",
+      "folder": "D:\\KCxProjects\\dont remember what apps these are\\kcxlabs-site",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "KCxMode",
+      "slug": "kcxmode",
+      "folder": "D:\\KCxProjects\\dont remember what apps these are\\KCxMode",
+      "description": "Discovered from build.gradle.kts",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "godzillamodeai",
+      "slug": "godzillamodeai",
+      "folder": "D:\\KCxProjects\\dont remember what apps these are\\KCxModeAI",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-knowledge-manager",
+      "slug": "kcx-knowledge-manager",
+      "folder": "D:\\KCxProjects\\KCx Knowledge Manager",
+      "description": "Discovered from electron-builder.yml, package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-alpha",
+      "slug": "audit-samerepo-alpha",
+      "folder": "D:\\KCxProjects\\KCx Knowledge Manager\\to see whats all here\\live-audit-2026-07-11\\fixtures\\parent-a\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-beta",
+      "slug": "audit-samerepo-beta",
+      "folder": "D:\\KCxProjects\\KCx Knowledge Manager\\to see whats all here\\live-audit-2026-07-11\\fixtures\\parent-b\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcxegv",
+      "slug": "kcxegv",
+      "folder": "D:\\KCxProjects\\KCxEGV",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-extractor",
+      "slug": "kcx-extractor",
+      "folder": "D:\\KCxProjects\\KCxExtractor",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "gradio",
+      "slug": "gradio",
+      "folder": "D:\\KCxProjects\\KCxExtractor\\plugins\\audiosr\\.venv\\Lib\\site-packages\\gradio",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "gradio_client",
+      "slug": "gradio-client",
+      "folder": "D:\\KCxProjects\\KCxExtractor\\plugins\\audiosr\\.venv\\Lib\\site-packages\\gradio_client",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "pandas",
+      "slug": "pandas",
+      "folder": "D:\\KCxProjects\\KCxExtractor\\plugins\\audiosr\\.venv\\Lib\\site-packages\\pandas",
+      "description": "Discovered from pyproject.toml",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-labs-site",
+      "slug": "kcx-labs-site",
+      "folder": "D:\\KCxProjects\\KCxLabs",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-local-ai",
+      "slug": "kcx-local-ai",
+      "folder": "D:\\KCxProjects\\KCxLocalAI",
+      "description": "Discovered from electron-builder.yml, package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-alpha",
+      "slug": "audit-samerepo-alpha",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.claude\\artifacts\\live-audit-2026-07-11\\fixtures\\parent-a\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-beta",
+      "slug": "audit-samerepo-beta",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.claude\\artifacts\\live-audit-2026-07-11\\fixtures\\parent-b\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-alpha",
+      "slug": "audit-samerepo-alpha",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.codex\\artifacts\\live-audit-2026-07-11\\fixtures\\parent-a\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-beta",
+      "slug": "audit-samerepo-beta",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.codex\\artifacts\\live-audit-2026-07-11\\fixtures\\parent-b\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "nexustest",
+      "slug": "nexustest",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.tmp-trusted-scan-flow-r5oxYm\\ztest\\nexustest",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "llama.cpp",
+      "slug": "llama-cpp",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.training\\tools\\llama.cpp",
+      "description": "Discovered from pyproject.toml",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "llama.android",
+      "slug": "llama-android",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.training\\tools\\llama.cpp\\examples\\llama.android",
+      "description": "Discovered from build.gradle.kts",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "app",
+      "slug": "app",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.training\\tools\\llama.cpp\\examples\\llama.android\\app",
+      "description": "Discovered from build.gradle.kts",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "lib",
+      "slug": "lib",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.training\\tools\\llama.cpp\\examples\\llama.android\\lib",
+      "description": "Discovered from build.gradle.kts",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "gguf-py",
+      "slug": "gguf-py",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.training\\tools\\llama.cpp\\gguf-py",
+      "description": "Discovered from pyproject.toml",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "llama-ui",
+      "slug": "llama-ui",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.training\\tools\\llama.cpp\\tools\\ui",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "pandas",
+      "slug": "pandas",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\.training\\venv\\Lib\\site-packages\\pandas",
+      "description": "Discovered from pyproject.toml",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-nexus-vscode-extension",
+      "slug": "kcx-nexus-vscode-extension",
+      "folder": "D:\\KCxProjects\\KCxLocalAI\\vscode-extension",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "KCxRemoteDevControl2",
+      "slug": "kcxremotedevcontrol2",
+      "folder": "D:\\KCxProjects\\KCxRemoteDevControl2",
+      "description": "Discovered from build.gradle.kts",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "app",
+      "slug": "app",
+      "folder": "D:\\KCxProjects\\KCxRemoteDevControl2\\app",
+      "description": "Discovered from build.gradle.kts",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-studio-companion",
+      "slug": "kcx-studio-companion",
+      "folder": "D:\\KCxProjects\\KCxStudioCompanion",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-alpha",
+      "slug": "audit-samerepo-alpha",
+      "folder": "D:\\KCxProjects\\Knowledge\\to see whats all here\\live-audit-2026-07-11\\fixtures\\parent-a\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "audit-samerepo-beta",
+      "slug": "audit-samerepo-beta",
+      "folder": "D:\\KCxProjects\\Knowledge\\to see whats all here\\live-audit-2026-07-11\\fixtures\\parent-b\\SameRepo",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-remote-dev-server",
+      "slug": "kcx-remote-dev-server",
+      "folder": "D:\\KCxProjects\\RemoteDevServer",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "kcx-theme-sync",
+      "slug": "kcx-theme-sync",
+      "folder": "D:\\KCxProjects\\ThemeSync",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T03:55:25.902Z"
+    }
+  ],
+  "releases": [],
+  "categories": [],
+  "featuredProjectSlugs": [],
+  "archivedProjectSlugs": []
+}

@@ -1,0 +1,2 @@
+.kcx-glow-cyan { box-shadow: 0 0 var(--kcx-glow) color-mix(in srgb, var(--kcx-cyan) 55%, transparent); }
+.kcx-glow-orange { box-shadow: 0 0 var(--kcx-glow) color-mix(in srgb, var(--kcx-orange) 55%, transparent); }
