@@ -21,6 +21,7 @@ This repository contains the official KCx Labs website and its Electron-based de
 - Projects: select a trusted root folder and scan its subfolders for common project manifests. Scan results are review-only until explicitly loaded and registered.
 - Website candidates: choose individual discovered projects or use **Add all projects to website**. Both routes show additions/removals first and require **Approve website changes** plus a native confirmation before metadata is changed.
 - Import workflow: browse or drag project folders, ZIP/EXE/MSI release artifacts, and `.patch`/`.diff` files. Release publishing is a guided three-step preview-and-confirm workflow; patch import remains separate.
+- Artifacts: open registered project folders, create staged ZIPs for the release workflow, or run project-defined executable packaging scripts.
 - Releases require a native confirmation before a file is copied or website metadata changes. Deployment is never automatic.
 
 ## Core Ecosystem Systems

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { desktopIpcChannels } from "./ipc";
@@ -97,6 +97,13 @@ app.whenReady().then(() => {
     const confirmation = await dialog.showMessageBox(mainWindow!, { type: "warning", buttons: ["Cancel", "Import patch"], defaultId: 0, cancelId: 0, message: `Import ${preview.fileName}?`, detail: "The patch is stored separately from release artifacts. An overwrite backup is created first." });
     return confirmation.response === 1 ? platform.importPatch(project, path) : { ok: false, message: "Patch import cancelled." };
   });
+  ipcMain.handle(desktopIpcChannels.openProjectFolder, async (_event, id: string) => {
+    const project = (await catalog.list()).find((candidate) => candidate.id === id);
+    if (!project || project.folderStatus === "missing") return { ok: false, message: "Select a registered project with an available folder." };
+    const result = await shell.openPath(project.folder); return result ? { ok: false, message: result } : { ok: true, message: "Project folder opened." };
+  });
+  ipcMain.handle(desktopIpcChannels.createProjectZip, async (_event, id: string) => platform.createProjectZip((await catalog.list()).find((project) => project.id === id)));
+  ipcMain.handle(desktopIpcChannels.buildProjectExecutable, async (_event, id: string) => platform.buildProjectExecutable((await catalog.list()).find((project) => project.id === id)));
   ipcMain.handle(desktopIpcChannels.previewRelease, async (_event, draft: ReleaseDraft) => {
     const project = (await catalog.list()).find((candidate) => candidate.id === draft.projectId);
     return previewRelease(draft, project);

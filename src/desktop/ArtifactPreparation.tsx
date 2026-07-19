@@ -1,0 +1,8 @@
+import { useState } from "react";
+import type { CatalogProject } from "../shared/desktop";
+
+export function ArtifactPreparation({ projects, setMessage }: { projects: CatalogProject[]; setMessage: (message: string) => void }) {
+  const [projectId, setProjectId] = useState(""); const [result, setResult] = useState("");
+  const run = async (action: () => Promise<{ ok: boolean; message: string }>) => { setResult("Working…"); const response = await action(); setResult(response.message); setMessage(response.message); };
+  return <section className="desktop-card" style={{ padding: "1.25rem" }}><p className="desktop-kicker">Artifact preparation</p><h2>Open, package, and stage project files</h2><p>ZIPs are staged for later selection in Release Publisher. Executable packaging runs only a project-defined package, make, or dist script.</p><select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">Select registered project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name} ({project.folderStatus})</option>)}</select><div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginTop: "1rem" }}><button className="desktop-action" disabled={!projectId} onClick={() => void run(() => window.kcxDesktop!.openProjectFolder(projectId))}>Open project folder</button><button className="desktop-action" disabled={!projectId} onClick={() => void run(() => window.kcxDesktop!.createProjectZip(projectId))}>Create staged ZIP</button><button className="desktop-action" disabled={!projectId} onClick={() => void run(() => window.kcxDesktop!.buildProjectExecutable(projectId))}>Build executable</button></div><pre>{result}</pre></section>;
+}

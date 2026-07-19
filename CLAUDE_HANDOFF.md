@@ -12,6 +12,7 @@ The renderer remains unprivileged: Electron enables context isolation and sandbo
 - Project discovery scans only a user-selected existing root, skips generated folders, and returns review-only candidates. It never auto-registers a project.
 - Discovered projects can be selected individually or staged with Add all projects to website. The website change preview lists additions/removals; approval opens a native confirmation and creates a catalog backup before changing metadata.
 - The current import phase supports browse/drop project folders, browse/drop ZIP/EXE/MSI release artifacts through a three-step wizard, and browse/drop `.patch`/`.diff` files in a separate patch-import module. All write operations remain previewed and confirmation-gated.
+- Artifact preparation opens only registered available folders, stages source ZIPs under `public/downloads/staged/`, and runs only existing project-defined `package`, `make`, or `dist` scripts for executable generation.
 - Release validation computes SHA-256 and size. Publishing requires a native confirmation, creates an overwrite backup, and updates structured website metadata. It never deploys.
 - Website preview is a distinct Vite process and supports explicit start/stop plus output capture.
 - Theme synchronization uses KCxLabs' canonical `theme-engine/`, previews hashes/status, backs up replaced target files, and has no runtime link to reference projects.

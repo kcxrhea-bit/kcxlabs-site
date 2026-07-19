@@ -2,9 +2,10 @@ import { FormEvent, useEffect, useState } from "react";
 import { Activity, Boxes, CloudUpload, FileText, FolderKanban, Gauge, History, MonitorPlay, Palette, Rocket, Settings } from "lucide-react";
 import type { ActivityEntry, CatalogProject, DeploymentReadiness, DesktopStatus, DiscoveredProject, NewCatalogProject, PreviewStatus, ReleasePreview, ThemeScan, WebsiteChangePreview, WebsiteChangeRequest, WebsiteProduct } from "../shared/desktop";
 import { PatchImport, ProjectFolderRegistration, ReleaseWizard } from "./WorkflowComponents";
+import { ArtifactPreparation } from "./ArtifactPreparation";
 import "./desktop.css";
 
-const navigation = [[Gauge, "Dashboard"], [FolderKanban, "Projects"], [Rocket, "Release Publisher"], [FileText, "Patch Import"], [FileText, "Website"], [MonitorPlay, "Website Preview"], [CloudUpload, "Deployment"], [Palette, "Theme Sync"], [History, "Release History"], [Activity, "Activity"], [Settings, "Settings"]] as const;
+const navigation = [[Gauge, "Dashboard"], [FolderKanban, "Projects"], [FileText, "Artifacts"], [Rocket, "Release Publisher"], [FileText, "Patch Import"], [FileText, "Website"], [MonitorPlay, "Website Preview"], [CloudUpload, "Deployment"], [Palette, "Theme Sync"], [History, "Release History"], [Activity, "Activity"], [Settings, "Settings"]] as const;
 const initialProject: NewCatalogProject = { name: "", slug: "", folder: "", description: "", category: "", currentVersion: "", releaseChannel: "stable", websiteVisible: true, downloadVisible: true };
 
 export function DesktopApp() {
@@ -16,6 +17,7 @@ export function DesktopApp() {
 
 function Page({ page, projects, refreshProjects, setMessage }: { page: string; projects: CatalogProject[]; refreshProjects: () => Promise<void>; setMessage: (value: string) => void }) {
   if (page === "Projects") return <><ProjectFolderRegistration refresh={refreshProjects} setMessage={setMessage} /><Projects projects={projects} refresh={refreshProjects} setMessage={setMessage} /></>;
+  if (page === "Artifacts") return <ArtifactPreparation projects={projects} setMessage={setMessage} />;
   if (page === "Release Publisher") return <ReleaseWizard projects={projects} setMessage={setMessage} />;
   if (page === "Patch Import") return <PatchImport projects={projects} setMessage={setMessage} />;
   if (page === "Website") return <Website setMessage={setMessage} />;

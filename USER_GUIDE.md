@@ -91,6 +91,18 @@ Publishing copies the artifact into `public/downloads/releases/<project-slug>/`,
 
 If validation fails, correct the project, version, title, or artifact and validate again. Do not publish a failed preview.
 
+## Artifacts
+
+Use **Artifacts** when you need to prepare files before opening the Release Publisher.
+
+1. Select a registered project with an `available` folder.
+2. Select **Open project folder** to inspect its real source folder in File Explorer.
+3. Select **Create staged ZIP** to create `public/downloads/staged/<project-slug>/<project-slug>-source.zip`.
+4. Select **Build executable** only when the project's `package.json` defines a `package`, `make`, or `dist` script.
+5. In **Release Publisher**, browse to the staged ZIP or generated EXE, preview it, then publish only after confirmation.
+
+KCxLabs cannot create a trustworthy generic EXE for arbitrary source code. It runs the project’s own configured packaging script and reports when one is not available.
+
 ## Patch Import
 
 Patch import is separate from release publishing. It stores a `.patch` or `.diff` file without creating a download release.

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -82,6 +82,25 @@ test("patch import stays separate from release artifacts and validates its exten
     assert.equal((await service.previewPatch(project, join(root, "not-a-patch.txt"))).isValid, false);
     const imported = await service.importPatch(project, patchPath);
     assert.equal(imported.ok, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("artifact preparation stages a ZIP and refuses unspecified executable packaging", async () => {
+  const root = await mkdtemp(join(tmpdir(), "kcx-labs-artifact-"));
+  try {
+    await mkdir(join(root, "src", "data"), { recursive: true });
+    await mkdir(join(root, "project"), { recursive: true });
+    await writeFile(join(root, "src", "data", "publishing-catalog.json"), JSON.stringify({ schemaVersion: 1, products: [], releases: [], categories: [], featuredProjectSlugs: [], archivedProjectSlugs: [] }));
+    await writeFile(join(root, "project", "README.txt"), "artifact fixture");
+    await writeFile(join(root, "project", "package.json"), "{}");
+    const service = new PlatformService(root, join(root, "user-data"));
+    const project = { id: "project", name: "Project", slug: "project", folder: join(root, "project"), description: "", category: "", currentVersion: "0.0.0", releaseChannel: "stable", websiteVisible: true, downloadVisible: true, folderStatus: "available", createdAt: new Date().toISOString() };
+    const zip = await service.createProjectZip(project);
+    assert.equal(zip.ok, true, `${zip.message}\n${zip.output || ""}`);
+    await access(join(root, "public", "downloads", "staged", "project", "project-source.zip"));
+    assert.equal((await service.buildProjectExecutable(project)).ok, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

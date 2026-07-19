@@ -19,6 +19,9 @@ export type DesktopApi = {
   choosePatch(): Promise<string | null>;
   previewPatch(projectId: string, patchPath: string): Promise<PatchPreview>;
   importPatch(projectId: string, patchPath: string): Promise<OperationResult>;
+  openProjectFolder(projectId: string): Promise<OperationResult>;
+  createProjectZip(projectId: string): Promise<OperationResult>;
+  buildProjectExecutable(projectId: string): Promise<OperationResult>;
   previewRelease(draft: ReleaseDraft): Promise<ReleasePreview>;
   publishRelease(draft: ReleaseDraft): Promise<OperationResult>;
   getActivity(): Promise<ActivityEntry[]>;
