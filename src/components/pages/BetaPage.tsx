@@ -1,4 +1,5 @@
 import { AlertTriangle, Brain, Download, ExternalLink, FlaskConical, HardDrive, Mail, MemoryStick, Shield, ShieldAlert, ShieldCheck, Sparkles, Cpu, Activity } from "lucide-react";
+import { ConvoyBetaSection } from "../sections/ConvoyBetaSection";
 
 const downloadHref = "https://github.com/kcxrhea-bit/KCxStudioCompanion/releases/download/v0.9.5-beta/KCxStudioCompanion-v0.9.5-beta.zip";
 const releaseHref = "https://github.com/kcxrhea-bit/KCxStudioCompanion/releases/tag/v0.9.5-beta";
@@ -65,6 +66,7 @@ const features = [
 
 export function BetaPage() {
   return (
+    <>
     <section className="section-shell pt-32 lg:pt-36" aria-labelledby="beta-title">
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
         <div>
@@ -172,5 +174,8 @@ export function BetaPage() {
         </div>
       </div>
     </section>
+
+    <ConvoyBetaSection />
+    </>
   );
 }
