@@ -16,10 +16,10 @@ export function FuturePreviewSection() {
               <Download size={16} />
               Beta Download
             </a>
-            <span id="downloads" className="icon-chip scroll-mt-28">
+            <a href="#downloads" className="icon-chip">
               <Download size={16} />
               Downloads
-            </span>
+            </a>
             <span id="docs" className="icon-chip scroll-mt-28">
               <FileText size={16} />
               Docs

@@ -306,6 +306,24 @@
       "category": "Discovered project",
       "source": "scan",
       "addedAt": "2026-07-19T03:55:25.902Z"
+    },
+    {
+      "name": "KCxNexusMirror",
+      "slug": "kcxnexusmirror",
+      "folder": "D:\\KCxProjects\\KCxNexusMirror",
+      "description": "Discovered from build.gradle.kts",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T22:16:55.893Z"
+    },
+    {
+      "name": "kcx-nexus-mirror-gateway",
+      "slug": "kcx-nexus-mirror-gateway",
+      "folder": "D:\\KCxProjects\\KCxNexusMirror\\mirror-gateway",
+      "description": "Discovered from package.json",
+      "category": "Discovered project",
+      "source": "scan",
+      "addedAt": "2026-07-19T22:16:55.893Z"
     }
   ],
   "releases": [],

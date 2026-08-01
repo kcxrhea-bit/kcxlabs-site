@@ -11,7 +11,7 @@
  * as a safety net for local `vite preview`, which does not apply redirects.
  */
 
-export const publicRoutes = ["home", "beta", "nexus", "nexus-portal"] as const;
+export const publicRoutes = ["home", "beta", "nexus", "nexus-portal", "resume"] as const;
 
 export type PublicRoute = (typeof publicRoutes)[number];
 
@@ -20,12 +20,14 @@ export const publicRoutePaths: Record<Exclude<PublicRoute, "home">, string> = {
   beta: "/beta",
   nexus: "/nexus",
   "nexus-portal": "/nexus/portal",
+  resume: "/resume",
 };
 
 /** Legacy paths kept only as permanent redirects. Never link to these. */
 export const legacyRoutePaths: Record<string, string> = {
   "/nexus-cloud": publicRoutePaths.nexus,
   "/nexus-cloud/portal": publicRoutePaths["nexus-portal"],
+  "/resume-services": publicRoutePaths.resume,
 };
 
 export function resolvePublicRoute(pathname: string): PublicRoute {
@@ -43,6 +45,10 @@ export function resolvePublicRoute(pathname: string): PublicRoute {
     case "/nexus/portal":
     case "/nexus-cloud/portal":
       return "nexus-portal";
+    case "/resume":
+    // Alternate path kept working so either address reaches the same page.
+    case "/resume-services":
+      return "resume";
     default:
       return "home";
   }

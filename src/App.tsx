@@ -2,6 +2,8 @@ import { AppShell } from "./components/layout/AppShell";
 import { BetaPage } from "./components/pages/BetaPage";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
+import { ResumeServicesPage } from "./components/pages/ResumeServicesPage";
+import { ConvoyDownloadsSection } from "./components/sections/ConvoyDownloadsSection";
 import { EcosystemSection } from "./components/sections/EcosystemSection";
 import { FuturePreviewSection } from "./components/sections/FuturePreviewSection";
 import { HeroSection } from "./components/sections/HeroSection";
@@ -28,6 +30,8 @@ export default function App() {
         <NexusCloudPage />
       ) : route === "nexus-portal" ? (
         <NexusCloudPortalPage />
+      ) : route === "resume" ? (
+        <ResumeServicesPage />
       ) : (
         <>
           <HeroSection />
@@ -37,6 +41,7 @@ export default function App() {
           <MobileAiSection />
           <SubsystemModulesSection />
           <RoboticsSection />
+          <ConvoyDownloadsSection />
           <FuturePreviewSection />
         </>
       )}

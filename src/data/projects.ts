@@ -2,6 +2,7 @@ import {
   Bot,
   BrainCircuit,
   Eye,
+  FileText,
   HeartPulse,
   Cpu,
   Gamepad2,
@@ -21,6 +22,8 @@ export type Project = {
   signal: "orange" | "cyan" | "red";
   icon: LucideIcon;
   futurePath?: string;
+  /** Set when the page is live. Cards with this render a real link instead of a disabled button. */
+  livePath?: string;
 };
 
 export const primarySystems: Project[] = [
@@ -50,6 +53,18 @@ export const primarySystems: Project[] = [
     signal: "orange",
     icon: MonitorCog,
     futurePath: "/studio",
+  },
+];
+
+export const services: Project[] = [
+  {
+    name: "Resume Services",
+    eyebrow: "Professional services",
+    summary: "Professional resume writing, ATS optimization, and cover letters.",
+    status: "Active Build",
+    signal: "orange",
+    icon: FileText,
+    livePath: "/resume",
   },
 ];
 

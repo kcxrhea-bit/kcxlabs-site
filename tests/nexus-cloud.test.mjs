@@ -14,6 +14,14 @@ const data = await read("src/data/nexus-cloud.ts");
 const productPage = await read("src/components/pages/NexusCloudPage.tsx");
 const portalPage = await read("src/components/pages/NexusCloudPortalPage.tsx");
 const navigation = await read("src/data/navigation.ts");
+const resumePage = await read("src/components/pages/ResumeServicesPage.tsx");
+const resumeData = await read("src/data/resume-services.ts");
+const projectsSection = await read("src/components/sections/ProjectsPreviewSection.tsx");
+const metadataHook = await read("src/hooks/useDocumentMetadata.ts");
+
+/** Strips comments so content guards check what renders, not what the docs explain. */
+const withoutComments = (source) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const vercelConfig = JSON.parse(await read("vercel.json"));
 
 /**
@@ -77,6 +85,7 @@ test("legacy /nexus-cloud paths redirect permanently to the canonical routes", (
   assert.deepEqual(router.legacyRoutePaths, {
     "/nexus-cloud": "/nexus",
     "/nexus-cloud/portal": "/nexus/portal",
+    "/resume-services": "/resume",
   });
 });
 
@@ -112,11 +121,167 @@ test("no internal link still points at a legacy path", () => {
   assert.match(navigation, /href: "\/nexus"/);
 });
 
+test("/resume is a canonical public route with /resume-services redirecting to it", () => {
+  assert.equal(router.resolvePublicRoute("/resume"), "resume");
+  assert.equal(router.resolvePublicRoute("/resume/"), "resume");
+  assert.equal(router.resolvePublicRoute("/Resume"), "resume");
+  assert.equal(router.publicRoutePaths.resume, "/resume");
+  // The alternate address must redirect, not render a duplicate page.
+  assert.equal(router.resolvePublicRoute("/resume-services"), "resume");
+  const redirect = vercelConfig.redirects.find((rule) => rule.source === "/resume-services");
+  assert.equal(redirect.destination, "/resume");
+  assert.equal(redirect.permanent, true);
+});
+
+test("adding the resume route breaks no existing route", () => {
+  assert.equal(router.resolvePublicRoute("/beta"), "beta");
+  assert.equal(router.resolvePublicRoute("/nexus"), "nexus");
+  assert.equal(router.resolvePublicRoute("/nexus/portal"), "nexus-portal");
+  assert.equal(router.resolvePublicRoute("/"), "home");
+  assert.equal(router.resolvePublicRoute("/still-unknown"), "home");
+});
+
+test("Resume Services appears in navigation and on the homepage", () => {
+  assert.match(navigation, /\{ label: "Resume Services", href: "\/resume" \}/);
+  // One new project card, rendered by the existing card component.
+  assert.match(projectsSection, /\[\.\.\.primarySystems, \.\.\.services\]/);
+  assert.match(resumeData, /name: "Resume Rewrite"/);
+});
+
+test("the resume page reuses the existing design system", () => {
+  // No new framework, no bespoke card: it must use the site's composite classes.
+  for (const cls of ["section-shell", "section-divider", "studio-panel", "system-panel", "project-preview-card", "button-primary", "button-secondary", "focus-ring"]) {
+    assert.ok(resumePage.includes(cls), `resume page must reuse ${cls}`);
+  }
+  assert.match(resumePage, /from "\.\.\/ui\/SectionHeader"/);
+  assert.match(resumePage, /from "framer-motion"/);
+  // Nothing new introduced.
+  assert.doesNotMatch(resumePage, /bootstrap|styled-components|\.module\.css/i);
+});
+
+test("resume pricing and truthfulness copy are exact", () => {
+  for (const price of ['price: "$35"', 'price: "$50"', 'price: "$60"']) {
+    assert.ok(resumeData.includes(price), `missing ${price}`);
+  }
+  assert.match(resumeData, /Do you invent experience\?/);
+  assert.match(resumeData, /Do you guarantee interviews\?/);
+  assert.match(resumePage, /I never invent experience, certifications, education, or/);
+  assert.match(resumePage, /employment history\./);
+  assert.equal(resumeData.match(/order: \d/g).length, 4, "process must have four steps");
+});
+
+test("resume calls to action point at real destinations", () => {
+  assert.match(resumePage, /mailto:\$\{resumeContactEmail\}/);
+  // External links must not leak the opener.
+  const externalLinks = resumePage.match(/target="_blank"/g) ?? [];
+  const safeRels = resumePage.match(/rel="noopener noreferrer"/g) ?? [];
+  assert.equal(externalLinks.length, safeRels.length, "every _blank link needs noopener noreferrer");
+});
+
+test("an unconfigured Contra URL never renders a live order button", () => {
+  // The generic contra.com homepage cannot take an order, so it must never ship.
+  assert.doesNotMatch(resumeData, /contraOrderUrl[^;]*"https:\/\/contra\.com\/?"/);
+  assert.match(resumeData, /export const contraOrderUrl: string \| null = null;/);
+  // While unconfigured the button is disabled and labelled honestly.
+  assert.match(resumePage, /Contra Link Coming Soon/);
+  assert.match(resumePage, /preview-disabled-button/);
+  // Email stays the active call to action.
+  assert.match(resumePage, /contraIsConfigured \? "secondary" : "primary"/);
+});
+
+test("configuration is centralised in one place", () => {
+  for (const key of [
+    "export const contraOrderUrl",
+    "export const resumeContactEmail",
+    "export const resumeCanonicalRoute",
+    "export const resumeImageBase",
+    "export const resumeMetadata",
+    "export const plannedBeforeAfterImages",
+  ]) {
+    assert.ok(resumeData.includes(key), `missing config export: ${key}`);
+  }
+  // Components must not hardcode the address or route.
+  assert.doesNotMatch(resumePage, /contra\.com/);
+  assert.doesNotMatch(resumePage, /jason@/);
+});
+
+test("portfolio entries are typed data with disclosures and alt text", () => {
+  for (const title of [
+    "Before & After Resume Transformation",
+    "ATS Resume Optimization",
+    "Custom Cover Letter Sample",
+    "Professional Resume Template",
+  ]) {
+    assert.ok(resumeData.includes(title), `missing portfolio entry: ${title}`);
+  }
+  // Four entries, each disclosed as a sample and each with alt text.
+  assert.equal((resumeData.match(/disclosure: SAMPLE_DISCLOSURE/g) ?? []).length, 4);
+  // Quote-matched so the type declaration is not counted.
+  assert.equal((resumeData.match(/altText: "/g) ?? []).length, 4);
+  assert.match(resumeData, /Not client work\./);
+  // Content lives in data, not JSX.
+  assert.doesNotMatch(resumePage, /ATS Resume Optimization|Custom Cover Letter Sample/);
+});
+
+test("no fabricated clients, testimonials, or paid history", () => {
+  for (const source of [resumeData, resumePage].map(withoutComments)) {
+    assert.doesNotMatch(source, /testimonial|client said|worked with \d+|trusted by|\d+\+? clients/i);
+  }
+});
+
+test("images stay empty until real files exist, so nothing 404s", () => {
+  // Every image field ships empty; the frame renders a placeholder instead.
+  assert.doesNotMatch(resumeData, /(coverImage|beforeImage|afterImage): "\/[^"]+"/);
+  assert.match(resumeData, /resumeImageBase = "\/resume-portfolio"/);
+  // The intended paths are recorded for when the files are added.
+  assert.match(resumeData, /resume-before\.png/);
+  assert.match(resumeData, /resume-after\.png/);
+  // The component only renders an <img> when a path is present.
+  assert.match(resumePage, /\{src \? \(/);
+});
+
+test("trust section claims nothing it cannot support", () => {
+  for (const point of [
+    "ATS-friendly formatting",
+    "No invented experience",
+    "Human-reviewed final documents",
+    "Editable Microsoft Word document included",
+    "Privacy-conscious handling of customer information",
+  ]) {
+    assert.ok(resumeData.includes(point), `missing trust point: ${point}`);
+  }
+  // No credential or outcome guarantees in anything that renders. Matches
+  // affirmative claims only, so stating what is NOT claimed stays allowed.
+  for (const source of [resumeData, resumePage].map(withoutComments)) {
+    assert.doesNotMatch(source, /(certified|licensed|accredited)\s+(resume|career|writer|professional)/i);
+    assert.doesNotMatch(source, /(I am|as)\s+a\s+(recruiter|career coun)/i);
+    assert.doesNotMatch(source, /guarantee[ds]?\s+(you\s+)?(an?\s+)?(interview|employment|job|placement)/i);
+  }
+  // The disclaimer itself must be present and explicit.
+  assert.match(resumePage, /No certifications, recruiter status, or guarantees/);
+});
+
+test("the revision policy is present and bounded", () => {
+  assert.match(resumeData, /Can revisions be requested\?/);
+  assert.match(resumeData, /one reasonable revision round/);
+  assert.doesNotMatch(resumeData, /unlimited revisions/i);
+});
+
+test("page metadata uses the existing tags without a new framework", () => {
+  assert.match(resumeData, /title: "Professional Resume Writing Services \| KCx Labs"/);
+  assert.match(resumeData, /"Resume writing, ATS optimization, cover letters/);
+  assert.match(resumePage, /useDocumentMetadata\(resumeMetadata\.title, resumeMetadata\.description\)/);
+  // Plain DOM only — no metadata dependency added.
+  assert.doesNotMatch(metadataHook, /helmet|next\/head|react-head/i);
+  assert.match(metadataHook, /document\.title/);
+});
+
 test("App renders each public route and keeps the Electron switch first", () => {
   assert.match(app, /if \(window\.kcxDesktop\) \{\s*\n\s*return <DesktopApp \/>;/);
   assert.match(app, /<BetaPage \/>/);
   assert.match(app, /<NexusCloudPage \/>/);
   assert.match(app, /<NexusCloudPortalPage \/>/);
+  assert.match(app, /<ResumeServicesPage \/>/);
 });
 
 // ------------------------------------------------------------ truthfulness

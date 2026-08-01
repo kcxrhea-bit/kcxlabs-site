@@ -1,5 +1,13 @@
 # KCxLabs desktop publishing guide
 
+## Convoy Downloads
+
+The public site Downloads section includes a Convoy card. **Open Web App** launches the continuously hosted foreground web companion at `https://convoy.kcxlabs.org`; it does not require Metro, an Expo tunnel, localhost, or a PC server.
+
+Android remains labeled **Development Preview** until a real signed APK is copied into the public release area and its version, byte size, and SHA-256 checksum are verified. Never publish an Android App Bundle (`.aab`) as a direct tester download. When a verified APK is available, testers download it and approve Android sideload installation.
+
+iPhone remains labeled **iPhone beta coming soon** until an Apple-reviewed external TestFlight build and real public invitation URL exist. Never offer a direct `.ipa`. Once available, testers install Apple's TestFlight app, open the public invitation link, and install Convoy through TestFlight. The hosted web app remains the alternative on both platforms and does not provide native push, background GPS, or reliable screen-off tracking.
+
 KCxLabs is the local publishing workspace for the KCx Labs website. It does not deploy automatically. Any action that writes website metadata, copies a release file, or overwrites theme files is previewed or confirmed first.
 
 ## Start KCxLabs

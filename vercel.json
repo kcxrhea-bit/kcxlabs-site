@@ -9,6 +9,11 @@
       "source": "/nexus-cloud/portal",
       "destination": "/nexus/portal",
       "permanent": true
+    },
+    {
+      "source": "/resume-services",
+      "destination": "/resume",
+      "permanent": true
     }
   ],
   "rewrites": [

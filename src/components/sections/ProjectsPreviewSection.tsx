@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
-import { primarySystems } from "../../data/projects";
+import { primarySystems, services } from "../../data/projects";
 import { SectionHeader } from "../ui/SectionHeader";
 
 export function ProjectsPreviewSection() {
@@ -13,7 +13,7 @@ export function ProjectsPreviewSection() {
         description="These previews bridge the homepage to future project pages while keeping the current site honest: no routing, no pretend downloads, and no empty product claims."
       />
       <div className="grid gap-5 lg:grid-cols-3">
-        {primarySystems.map((project, index) => {
+        {[...primarySystems, ...services].map((project, index) => {
           const Icon = project.icon;
 
           return (
@@ -37,12 +37,20 @@ export function ProjectsPreviewSection() {
               <h3 className="mt-3 text-2xl font-semibold leading-tight text-white">{project.name}</h3>
               <p className="mt-4 text-sm leading-7 text-kcx-ash">{project.summary}</p>
               <div className="mt-7 flex items-center justify-between gap-4 border-t border-white/10 pt-5">
-                <span className="font-mono text-sm text-kcx-steel">Future page: {project.futurePath}</span>
+                <span className="font-mono text-sm text-kcx-steel">
+                  {project.livePath ? `Live page: ${project.livePath}` : `Future page: ${project.futurePath}`}
+                </span>
                 <ArrowRight size={16} className="text-kcx-cyan" aria-hidden="true" />
               </div>
-              <button className="preview-disabled-button mt-6 w-full" type="button" disabled>
-                Page Coming Soon
-              </button>
+              {project.livePath ? (
+                <a href={project.livePath} className="button-secondary focus-ring mt-6 w-full">
+                  Open Page
+                </a>
+              ) : (
+                <button className="preview-disabled-button mt-6 w-full" type="button" disabled>
+                  Page Coming Soon
+                </button>
+              )}
             </motion.article>
           );
         })}
