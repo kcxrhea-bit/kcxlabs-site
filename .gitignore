@@ -11,3 +11,5 @@ dist-electron/
 coverage/
 release/
 *.log
+.env.local
+.env.*.local
