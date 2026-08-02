@@ -69,6 +69,11 @@ export function ConvoyDownloadsSection() {
           <ShieldCheck size={19} className="mt-0.5 shrink-0 text-kcx-cyan" aria-hidden="true" />
           <p className="text-sm leading-6 text-kcx-ash">The Convoy web app is available now as the installation-free alternative for Android and iPhone. Web testing remains foreground-only and does not claim native push, background GPS, or screen-off tracking.</p>
         </div>
+
+        <div className="mt-6 border-l border-kcx-orange/50 bg-black/20 px-5 py-4">
+          <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-kcx-orange">Original Inspiration</h4>
+          <p className="mt-2 text-sm leading-6 text-kcx-ash">Convoy was inspired by an original idea from Nicholas Jenkins. His concept sparked the project and helped shape the experience of keeping groups connected while traveling together.</p>
+        </div>
       </article>
     </section>
   );

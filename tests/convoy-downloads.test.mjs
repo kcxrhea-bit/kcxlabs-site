@@ -18,3 +18,8 @@ test("Convoy native availability stays honest until artifacts exist", () => {
   assert.doesNotMatch(source, /href=.*\.(?:apk|aab|ipa)/i);
   assert.doesNotMatch(source, /testflight\.apple\.com\/join/i);
 });
+
+test("Convoy product details acknowledge the original inspiration", () => {
+  assert.match(source, /Original Inspiration/);
+  assert.match(source, /Convoy was inspired by an original idea from Nicholas Jenkins\./);
+});

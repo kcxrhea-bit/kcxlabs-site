@@ -232,6 +232,11 @@ export function ConvoyBetaSection() {
             claim to native push notifications, background GPS, or screen-off tracking.
           </p>
         </div>
+
+        <div className="mt-6 border-l border-kcx-orange/50 bg-black/20 px-5 py-4">
+          <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-kcx-orange">Original Inspiration</h4>
+          <p className="mt-2 text-sm leading-6 text-kcx-ash">Convoy was inspired by an original idea from Nicholas Jenkins. His concept sparked the project and helped shape the experience of keeping groups connected while traveling together.</p>
+        </div>
       </article>
     </section>
   );

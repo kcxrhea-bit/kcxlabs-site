@@ -75,3 +75,8 @@ test("release notes and the web-vs-native distinction are explained", () => {
   assert.match(source, /Development Preview/);
   assert.match(source, /separate deployment from the native packages/);
 });
+
+test("Convoy beta acknowledges the original inspiration", () => {
+  assert.match(source, /Original Inspiration/);
+  assert.match(source, /Convoy was inspired by an original idea from Nicholas Jenkins\./);
+});
