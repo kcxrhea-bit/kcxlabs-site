@@ -206,6 +206,16 @@ test("a failed archive returns to eligible so it can be retried, not to archived
   assert.equal(canTransitionArchiveState("archive_downloading", "archive_failed"), true);
   assert.equal(canTransitionArchiveState("archive_failed", "archive_eligible"), true);
   assert.equal(canTransitionArchiveState("archive_failed", "archived_local"), false);
-  // Deletion is terminal.
-  assert.deepEqual(canTransitionArchiveState("cloud_deleted", "active"), false);
+  // Going offline is not terminal any more — an archived item is restorable —
+  // but it still cannot jump straight back to active without a restore.
+  assert.equal(canTransitionArchiveState("archived_offline", "active"), false);
+  assert.equal(canTransitionArchiveState("archived_offline", "restoring"), true);
+});
+
+test("an unknown or retired state fails closed rather than throwing", () => {
+  // 'cloud_deleted' was renamed to 'archived_offline'; a stale value must be
+  // refused, not crash and not be treated as permissive.
+  assert.equal(canTransitionArchiveState("cloud_deleted", "active"), false);
+  assert.equal(canTransitionArchiveState("active", "cloud_deleted"), false);
+  assert.equal(canTransitionArchiveState("", "active"), false);
 });

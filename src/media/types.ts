@@ -47,36 +47,107 @@ export const archiveStateValues = [
   "archive_downloading",
   "archived_local",
   "cloud_delete_pending",
-  "cloud_deleted",
+  "archived_offline",
   "archive_failed",
+  "restore_requested",
+  "restoring",
+  "restore_failed",
 ] as const;
 
 /**
- * Where an item sits in the "bring it back to my PC, then free the cloud copy"
- * lifecycle. Transitions are explicit and recoverable: every non-terminal state
- * can be re-entered after a crash without losing data.
+ * Where an item sits in the two-tier lifecycle:
+ *
+ *   ONLINE (R2 holds the original)  ⇄  ARCHIVED_OFFLINE (the PC holds it)
+ *
+ * This is ONE state machine, deliberately. The restore path was folded into the
+ * existing archive machine rather than added as a second parallel one, so there
+ * is exactly one answer to "where is this item right now".
+ *
+ * `archived_offline` replaced the earlier `cloud_deleted`. The old name implied
+ * a terminal, destroyed item; the reality is the opposite — the media record,
+ * publicId, share page, and thumbnail all live on, and only the large original
+ * has moved to the PC. An `archived_offline` item is fully restorable.
+ *
+ * Transitions are explicit and recoverable: every non-terminal state can be
+ * re-entered after a crash without losing data.
  */
 export type ArchiveState = (typeof archiveStateValues)[number];
 
 /**
- * Legal transitions. Anything not listed here is rejected by the API, so a
- * buggy or replayed client cannot walk an item into `cloud_deleted` out of order.
+ * Legal transitions. Anything not listed here is rejected, so a buggy, replayed,
+ * or hostile caller cannot walk an item into a state out of order — in
+ * particular it cannot reach `archived_offline` (original removed from R2)
+ * without passing through verified local archival first.
  *
- * Note `archive_failed` returns to `archive_eligible`: a failed download must be
- * retryable, and must never leave the item looking archived.
+ * Notable edges and why they exist:
+ *   archive_eligible → active     Keep Online was switched on; stand down.
+ *   archived_local   → active     Local copy exists but the cloud original was
+ *                                 kept; the item is simply safe in both places.
+ *   archive_failed   → archive_eligible   A failed download must be retryable,
+ *                                 and must never leave the item looking archived.
+ *   restore_failed   → archived_offline   A failed restore returns the item to
+ *                                 offline, NOT to online. This is what stops a
+ *                                 corrupt or missing local file from being
+ *                                 presented as a playable clip.
  */
 export const allowedArchiveTransitions: Record<ArchiveState, readonly ArchiveState[]> = {
   active: ["archive_eligible"],
   archive_eligible: ["archive_downloading", "active"],
   archive_downloading: ["archived_local", "archive_failed"],
-  archived_local: ["cloud_delete_pending"],
-  cloud_delete_pending: ["cloud_deleted", "archive_failed"],
-  cloud_deleted: [],
+  archived_local: ["cloud_delete_pending", "active"],
+  cloud_delete_pending: ["archived_offline", "archive_failed"],
+  // Offline but intact: the record and share page are live, the original is on
+  // the PC, and restore is the way back.
+  archived_offline: ["restore_requested", "restoring"],
   archive_failed: ["archive_eligible", "archive_downloading"],
+  // Reserved for the future website-initiated "Request Restore" flow. The
+  // desktop picks these up when it next comes online.
+  restore_requested: ["restoring", "archived_offline"],
+  restoring: ["active", "restore_failed"],
+  restore_failed: ["restore_requested", "restoring", "archived_offline"],
 };
 
+/**
+ * Fails closed. An unrecognised state — a value from an older build, a typo, or
+ * a hostile payload — yields `false` rather than throwing, so a bad input can
+ * never be mistaken for permission to move an item toward deletion.
+ */
 export function canTransitionArchiveState(from: ArchiveState, to: ArchiveState): boolean {
-  return allowedArchiveTransitions[from].includes(to);
+  const allowed = allowedArchiveTransitions[from];
+  if (allowed === undefined) return false;
+  if (!(archiveStateValues as readonly string[]).includes(to)) return false;
+  return allowed.includes(to);
+}
+
+/**
+ * States in which R2 no longer holds the original. Used for accounting (these
+ * items contribute only their thumbnail bytes) and for rendering the share page
+ * in its archived form instead of a broken player.
+ */
+export const offlineArchiveStates: readonly ArchiveState[] = [
+  "archived_offline",
+  "restore_requested",
+  "restore_failed",
+];
+
+/** True when the large original is not currently in R2. */
+export function isOriginalOffline(state: ArchiveState): boolean {
+  return offlineArchiveStates.includes(state);
+}
+
+/**
+ * States where an item must be left completely alone by automatic space
+ * reclamation: a transfer is in flight, so its byte accounting and object
+ * presence are both momentarily unstable.
+ */
+export const inFlightArchiveStates: readonly ArchiveState[] = [
+  "archive_downloading",
+  "cloud_delete_pending",
+  "restoring",
+];
+
+export function isArchiveInFlight(state: ArchiveState): boolean {
+  return inFlightArchiveStates.includes(state);
 }
 
 // ─── Upload lifecycle ────────────────────────────────────────────────────────
@@ -137,8 +208,35 @@ export type MediaItem = {
 
   // Storage
   storageProvider: string;
+  /**
+   * Key of the large original in R2. RETAINED after archival rather than
+   * cleared, because restore must put the object back at exactly the same key
+   * so the share URL keeps resolving. Presence of a key does not mean the
+   * object exists — `originalOnline` is the authority on that.
+   */
   storageObjectKey: string;
+  /**
+   * Whether R2 currently holds the original.
+   *
+   * This is the single flag the share page, the player, and byte accounting all
+   * consult. An archived item has `originalOnline: false` with every other field
+   * intact, which is what keeps kcxlabs.org/c/<publicId> working after the video
+   * has moved to the PC.
+   */
+  originalOnline: boolean;
+  /** Small poster kept online so archived clips still show a frame. */
   thumbnailKey: string | null;
+  /**
+   * Thumbnail size, counted separately because it stays in R2 after the
+   * original leaves. Archived items therefore still consume a little storage,
+   * and the budget must account for it rather than assuming zero.
+   */
+  thumbnailSizeBytes: number;
+
+  // Restore
+  restoreRequestedAt: string | null;
+  /** Plain-English reason the last restore attempt failed, for the UI. */
+  restoreFailedReason: string | null;
 
   // Descriptive metadata
   title: string;
@@ -195,7 +293,38 @@ export type PublicMediaItem = Pick<
   | "visibility"
   | "recordedAt"
   | "uploadedAt"
+  // Tells the share page whether to render a player or the archived state.
+  // Without this the page would point a <video> at an object that is no longer
+  // in R2 and show a broken player.
+  | "originalOnline"
 >;
+
+/**
+ * Bytes this item currently occupies in R2.
+ *
+ * An online item costs its original plus its thumbnail. An archived item costs
+ * only the thumbnail — which is the entire point of the two-tier design, and
+ * why archiving actually reclaims space.
+ *
+ * A record that is pending or soft-deleted contributes nothing.
+ */
+export function onlineBytesFor(
+  item: Pick<
+    MediaItem,
+    "sizeBytes" | "thumbnailSizeBytes" | "originalOnline" | "status" | "thumbnailKey"
+  >,
+): number {
+  if (item.status !== "active") return 0;
+  const thumbnail = item.thumbnailKey === null ? 0 : item.thumbnailSizeBytes;
+  return (item.originalOnline ? item.sizeBytes : 0) + thumbnail;
+}
+
+/** Total R2 bytes across a set of records. The local authoritative estimate. */
+export function totalOnlineBytes(
+  items: readonly Parameters<typeof onlineBytesFor>[0][],
+): number {
+  return items.reduce((sum, item) => sum + onlineBytesFor(item), 0);
+}
 
 export function toPublicMediaItem(item: MediaItem): PublicMediaItem {
   return {
@@ -215,7 +344,24 @@ export function toPublicMediaItem(item: MediaItem): PublicMediaItem {
     visibility: item.visibility,
     recordedAt: item.recordedAt,
     uploadedAt: item.uploadedAt,
+    originalOnline: item.originalOnline,
   };
+}
+
+/**
+ * What the share page should render.
+ *
+ * `archived` is not an error state and must not be presented as one: the clip
+ * still exists, it is just on the owner's PC. The page stays fully functional
+ * and keeps its poster, title, and metadata.
+ */
+export type SharePageMode = "playable" | "archived" | "download_only";
+
+export function resolveSharePageMode(item: Pick<PublicMediaItem, "originalOnline" | "kind">): SharePageMode {
+  if (!item.originalOnline) return "archived";
+  return item.kind === "video" || item.kind === "audio" || item.kind === "image"
+    ? "playable"
+    : "download_only";
 }
 
 // ─── Retention configuration ─────────────────────────────────────────────────
@@ -265,6 +411,14 @@ export type MediaSettings = {
   archiveRoot: string;
   notifyOnDetection: boolean;
   notifyOnUpload: boolean;
+
+  /**
+   * R2 storage safety thresholds, in bytes. Configurable, but defaulted well
+   * below the 10 GB free allowance so headroom is preserved. See
+   * `normalizeThresholds` in storage-budget.ts, which refuses unsafe orderings.
+   */
+  storageWarningBytes: number;
+  storagePauseBytes: number;
 };
 
 export const defaultMediaSettings: MediaSettings = {
@@ -279,4 +433,7 @@ export const defaultMediaSettings: MediaSettings = {
   archiveRoot: "D:\\OldclipsfromKCxlabs",
   notifyOnDetection: true,
   notifyOnUpload: true,
+  // 7 GB / 8 GB against a 10 GB free allowance.
+  storageWarningBytes: 7 * 1024 * 1024 * 1024,
+  storagePauseBytes: 8 * 1024 * 1024 * 1024,
 };

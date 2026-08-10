@@ -37,6 +37,10 @@ DO $$ BEGIN
   CREATE TYPE media_kind AS ENUM ('video', 'image', 'audio', 'document', 'archive', 'other');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- One state machine spanning both tiers: ONLINE (R2 holds the original) and
+-- ARCHIVED_OFFLINE (the PC holds it, the media record and share page live on).
+-- 'archived_offline' replaces the earlier 'cloud_deleted': the item is not
+-- destroyed, only relocated, and it is restorable.
 DO $$ BEGIN
   CREATE TYPE archive_state AS ENUM (
     'active',
@@ -44,8 +48,11 @@ DO $$ BEGIN
     'archive_downloading',
     'archived_local',
     'cloud_delete_pending',
-    'cloud_deleted',
-    'archive_failed'
+    'archived_offline',
+    'archive_failed',
+    'restore_requested',
+    'restoring',
+    'restore_failed'
   );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
@@ -101,8 +108,20 @@ CREATE TABLE IF NOT EXISTS media (
 
   -- Storage
   storage_provider       TEXT NOT NULL DEFAULT 'r2',
+  -- Key of the large original. Retained after archival so a restore can put the
+  -- object back at exactly the same key and the share URL keeps resolving.
+  -- Presence of a key does not imply the object exists: original_online does.
   storage_object_key     TEXT NOT NULL,
+  -- Whether R2 currently holds the original. The share page, the player, and
+  -- byte accounting all read this one flag.
+  original_online        BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Small poster kept online so archived clips still show a frame.
   thumbnail_key          TEXT,
+  thumbnail_size_bytes   BIGINT NOT NULL DEFAULT 0 CHECK (thumbnail_size_bytes >= 0),
+
+  -- Restore
+  restore_requested_at   TIMESTAMPTZ,
+  restore_failed_reason  TEXT,
 
   -- Descriptive metadata
   title                  TEXT NOT NULL DEFAULT '',
@@ -151,7 +170,18 @@ CREATE TABLE IF NOT EXISTS media (
   -- Manual owner-initiated deletion is a separate path that sets status
   -- 'deleted' and does not use these archive states.
   CONSTRAINT media_cloud_delete_requires_local_archive CHECK (
-    archive_state NOT IN ('cloud_delete_pending', 'cloud_deleted')
+    archive_state NOT IN ('cloud_delete_pending', 'archived_offline', 'restore_requested', 'restore_failed')
+    OR local_archive_verified = TRUE
+  ),
+
+  -- The other half of the same rule, from the object's point of view: an active
+  -- item whose original is not in R2 must have a verified local copy. Together
+  -- with the constraint above, "the only copy was deleted" cannot be represented
+  -- in this database at all — storage pressure included, since pressure never
+  -- writes a state, it only changes which item is worked on next.
+  CONSTRAINT media_offline_original_requires_local_archive CHECK (
+    status <> 'active'
+    OR original_online = TRUE
     OR local_archive_verified = TRUE
   ),
 
@@ -178,6 +208,51 @@ CREATE INDEX IF NOT EXISTS media_public_gallery_idx
 CREATE INDEX IF NOT EXISTS media_archive_sweep_idx
   ON media (archive_eligible_at)
   WHERE keep_online = FALSE AND status = 'active';
+
+-- Drives storage-pressure candidate selection: only items whose original is
+-- still in R2 can free space by being archived.
+CREATE INDEX IF NOT EXISTS media_online_originals_idx
+  ON media (uploaded_at)
+  WHERE original_online = TRUE AND status = 'active' AND keep_online = FALSE;
+
+-- ─── Local archive manifest (server-side mirror) ────────────────────────────
+-- The desktop keeps the authoritative manifest on disk; this table records what
+-- the desktop has confirmed, so the backend knows which cloud objects have a
+-- verified local copy and can answer restore requests. Lookup is by media_id,
+-- never by filename.
+
+CREATE TABLE IF NOT EXISTS archive_manifest (
+  media_id    TEXT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
+  public_id   TEXT NOT NULL,
+  local_path  TEXT NOT NULL,
+  size_bytes  BIGINT NOT NULL CHECK (size_bytes > 0),
+  sha256      TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+  archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  verified_at TIMESTAMPTZ
+);
+
+-- ─── Provider storage metrics cache ─────────────────────────────────────────
+-- Readings from Cloudflare's GraphQL Analytics API. Cached so the budget can be
+-- evaluated without calling Cloudflare on every upload, and so staleness is
+-- explicit rather than assumed.
+--
+-- These columns hold a POINT-IN-TIME measurement of bytes in the bucket. They
+-- are NOT billable GB-month, which is an integral over time and is not derived
+-- or stored anywhere in this schema.
+
+CREATE TABLE IF NOT EXISTS storage_metrics (
+  id                   BIGSERIAL PRIMARY KEY,
+  bucket               TEXT NOT NULL,
+  payload_size_bytes   BIGINT NOT NULL,
+  metadata_size_bytes  BIGINT NOT NULL DEFAULT 0,
+  object_count         BIGINT,
+  pending_upload_count BIGINT,
+  -- When Cloudflare measured it, which is not when we fetched it.
+  measured_at          TIMESTAMPTZ NOT NULL,
+  fetched_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS storage_metrics_recent_idx ON storage_metrics (measured_at DESC);
 
 CREATE INDEX IF NOT EXISTS media_owner_recent_idx ON media (owner_id, uploaded_at DESC);
 
