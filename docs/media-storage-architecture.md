@@ -72,6 +72,9 @@ credentials.
 | `archive_recommended` | 7 GB – < 8 GB | Uploads proceed, archiving surfaced in the UI |
 | `uploads_paused` | ≥ 8 GB | Uploads refused |
 
+A stricter **6 GB ceiling applies to automatic uploads only** whenever provider
+metrics are stale or unavailable — see *Failure modes and degraded mode* below.
+
 R2 Standard's free allowance is 10 GB. **We plan against 8 GB**, reserving ~2 GB
 of headroom, because our view of the bucket is never perfectly exact or fresh:
 provider metrics lag, failed multipart uploads can leave parts behind, and
@@ -103,15 +106,41 @@ travels all the way to the UI, so a local estimate is never labelled as an
 official Cloudflare measurement. Its label literally reads "not an official
 Cloudflare measurement".
 
-### Failure modes
+### Failure modes and degraded mode
 
-| Situation | Status | Uploads |
-|---|---|---|
-| Fresh Cloudflare reading | `normal` / `archive_recommended` / `uploads_paused` | Per band |
-| Reading older than 1 hour | `metrics_stale` | Allowed, planned against the larger figure |
-| No reading at all | `metrics_unavailable` | Allowed, but **still paused if the local estimate alone exceeds the ceiling** |
+When Cloudflare's measurement is stale (older than 1 hour) or unavailable, the
+budget enters **degraded mode**. Only the local estimate is left, and it is
+structurally blind to objects KCxLabs did not create — orphaned multipart parts,
+files uploaded by another tool, thumbnails left by a failed cleanup. That blind
+spot is unbounded, so a stricter ceiling applies.
 
-Losing Cloudflare visibility never becomes a route to exceeding the ceiling.
+| Situation | Status | Automatic uploads | Manual uploads |
+|---|---|---|---|
+| Fresh reading | `normal` / `archive_recommended` / `uploads_paused` | Normal 7 / 8 GB bands | Normal, no warning |
+| Stale or missing, projected **local** < 6 GB | `metrics_stale` / `metrics_unavailable` | Allowed | Allowed **with a warning** |
+| Stale or missing, projected **local** ≥ 6 GB | `metrics_stale` / `metrics_unavailable` | **Paused** until fresh metrics | Allowed with a stronger warning |
+| Projected max(local, provider) ≥ 8 GB | `uploads_paused` | Paused | Paused |
+
+Key details:
+
+- The **6 GB degraded ceiling is measured against the local figure**, since that
+  is the number whose blind spot we are compensating for. The 8 GB hard ceiling
+  is still measured against `max(local, provider)`, so a large stale provider
+  reading still pauses everything.
+- Automatic uploads pause because they are **unattended**. Manual uploads are the
+  owner making a deliberate choice, so they proceed — but never silently:
+  `manualUploadWarning` is non-null throughout degraded mode.
+- `autoUploadAllowed` is guaranteed never to be more permissive than
+  `uploadAllowed`; this is asserted in tests.
+- Automatic uploads resume on their own once Cloudflare reports current usage.
+  No manual reset is needed.
+
+Losing Cloudflare visibility never becomes a route to exceeding a ceiling.
+
+Thresholds are configurable via `MediaSettings` (`storageWarningBytes`,
+`storagePauseBytes`, `storageDegradedBytes`), and `normalizeThresholds()` refuses
+unsafe orderings — including a degraded ceiling above the hard ceiling, which
+would defeat its purpose.
 
 ## 4. Cloudflare integration plan — NOT YET IMPLEMENTED
 

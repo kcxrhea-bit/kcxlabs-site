@@ -13,6 +13,7 @@ import {
   R2_FREE_TIER_BYTES,
   DEFAULT_WARNING_THRESHOLD_BYTES,
   DEFAULT_PAUSE_THRESHOLD_BYTES,
+  DEFAULT_DEGRADED_THRESHOLD_BYTES,
   defaultMediaSettings,
 } from "../dist-electron/media-core.cjs";
 
@@ -62,6 +63,7 @@ test("thresholds are configurable but unsafe orderings are refused", () => {
   assert.deepEqual(normalizeThresholds({ pauseBytes: Number.NaN, warningBytes: -1 }), {
     warningBytes: DEFAULT_WARNING_THRESHOLD_BYTES,
     pauseBytes: DEFAULT_PAUSE_THRESHOLD_BYTES,
+    degradedBytes: DEFAULT_DEGRADED_THRESHOLD_BYTES,
     freeTierBytes: R2_FREE_TIER_BYTES,
     staleAfterMs: 60 * 60 * 1000,
   });
@@ -189,6 +191,144 @@ test("a malformed provider timestamp is treated as stale rather than as current"
     providerMetrics: { ...metrics(1 * GB), measuredAt: "not-a-date" },
   });
   assert.equal(result.metricsStale, true);
+});
+
+// ─── Degraded mode: stale or unavailable provider metrics ────────────────────
+
+test("the degraded auto-upload ceiling defaults to 6 GB, below the normal 8 GB", () => {
+  assert.equal(DEFAULT_DEGRADED_THRESHOLD_BYTES, 6 * GB);
+  assert.equal(defaultMediaSettings.storageDegradedBytes, 6 * GB);
+  assert.ok(DEFAULT_DEGRADED_THRESHOLD_BYTES < DEFAULT_PAUSE_THRESHOLD_BYTES);
+});
+
+test("stale metrics with projected local usage below 6 GB permits automatic upload", () => {
+  const result = budget({
+    localTrackedBytes: 4 * GB,
+    providerMetrics: metrics(4 * GB, 120),
+    incomingBytes: 500 * MB,
+  });
+  assert.equal(result.degradedMode, true);
+  assert.equal(result.status, "metrics_stale");
+  assert.equal(result.autoUploadAllowed, true);
+  assert.equal(result.autoUploadPausedReason, null);
+  // Manual uploads proceed, but never silently.
+  assert.notEqual(result.manualUploadWarning, null);
+  assert.match(result.manualUploadWarning, /out of date/);
+});
+
+test("stale metrics with projected local usage at or past 6 GB pauses automatic upload", () => {
+  const result = budget({
+    localTrackedBytes: 5.8 * GB,
+    providerMetrics: metrics(5.8 * GB, 120),
+    incomingBytes: 400 * MB,
+  });
+  assert.equal(result.projectedLocalBytes, 5.8 * GB + 400 * MB);
+  assert.equal(result.autoUploadAllowed, false);
+  assert.match(result.autoUploadPausedReason, /Automatic uploads paused/);
+  assert.match(result.autoUploadPausedReason, /out of date/);
+  // The hard ceiling has not been reached, so manual upload remains possible.
+  assert.equal(result.uploadAllowed, true);
+  assert.match(result.manualUploadWarning, /cannot confirm the real total/);
+});
+
+test("landing exactly on the 6 GB degraded ceiling pauses automatic upload", () => {
+  const result = budget({
+    localTrackedBytes: 5.5 * GB,
+    providerMetrics: metrics(5.5 * GB, 120),
+    incomingBytes: 0.5 * GB,
+  });
+  assert.equal(result.projectedLocalBytes, 6 * GB);
+  assert.equal(result.autoUploadAllowed, false);
+});
+
+test("unavailable metrics uses the same conservative 6 GB rule", () => {
+  const below = budget({ localTrackedBytes: 5 * GB, providerMetrics: null, incomingBytes: 200 * MB });
+  assert.equal(below.status, "metrics_unavailable");
+  assert.equal(below.autoUploadAllowed, true);
+
+  const at = budget({ localTrackedBytes: 5.9 * GB, providerMetrics: null, incomingBytes: 200 * MB });
+  assert.equal(at.status, "metrics_unavailable");
+  assert.equal(at.autoUploadAllowed, false);
+  assert.match(at.autoUploadPausedReason, /unavailable/);
+  assert.match(at.autoUploadPausedReason, /You can still upload manually/);
+});
+
+test("the degraded rule is measured against local usage, not the provider figure", () => {
+  // Local is small; a stale provider reading is larger. Automatic uploads keep
+  // running because the degraded ceiling tracks what WE know we uploaded.
+  const result = budget({
+    localTrackedBytes: 2 * GB,
+    providerMetrics: metrics(6.5 * GB, 120),
+    incomingBytes: 100 * MB,
+  });
+  assert.equal(result.autoUploadAllowed, true);
+  // The larger provider figure still drives the headline number and banding.
+  assert.equal(result.currentOnlineBytes, 6.5 * GB);
+});
+
+test("fresh metrics restore the normal 7 GB / 8 GB thresholds", () => {
+  // 6.5 GB projected would pause automatic uploads in degraded mode; with a
+  // fresh measurement it is simply normal operation.
+  const fresh = budget({
+    localTrackedBytes: 6.5 * GB,
+    providerMetrics: metrics(6.5 * GB),
+    incomingBytes: 100 * MB,
+  });
+  assert.equal(fresh.degradedMode, false);
+  assert.equal(fresh.status, "normal");
+  assert.equal(fresh.autoUploadAllowed, true);
+  assert.equal(fresh.autoUploadPausedReason, null);
+  // No warning is needed when the figures are corroborated.
+  assert.equal(fresh.manualUploadWarning, null);
+
+  // The 7 GB warning band still behaves exactly as before.
+  const warning = budget({ localTrackedBytes: 7.5 * GB, providerMetrics: metrics(7.5 * GB) });
+  assert.equal(warning.status, "archive_recommended");
+  assert.equal(warning.autoUploadAllowed, true);
+
+  // The 8 GB ceiling still behaves exactly as before.
+  const paused = budget({ localTrackedBytes: 8 * GB, providerMetrics: metrics(8 * GB) });
+  assert.equal(paused.status, "uploads_paused");
+  assert.equal(paused.uploadAllowed, false);
+  assert.equal(paused.autoUploadAllowed, false);
+});
+
+test("higher provider usage still wins over lower local usage in degraded mode", () => {
+  // Stale, but the provider saw far more than we track: the hard ceiling is
+  // evaluated on the larger figure, so everything pauses.
+  const result = budget({
+    localTrackedBytes: 1 * GB,
+    providerMetrics: metrics(8.5 * GB, 300),
+    incomingBytes: 50 * MB,
+  });
+  assert.equal(result.currentOnlineBytes, 8.5 * GB);
+  assert.equal(result.status, "uploads_paused");
+  assert.equal(result.uploadAllowed, false);
+  assert.equal(result.autoUploadAllowed, false);
+});
+
+test("automatic uploads are never more permissive than manual uploads", () => {
+  const cases = [
+    { localTrackedBytes: 0, providerMetrics: null },
+    { localTrackedBytes: 6.5 * GB, providerMetrics: null },
+    { localTrackedBytes: 3 * GB, providerMetrics: metrics(3 * GB, 500) },
+    { localTrackedBytes: 7.5 * GB, providerMetrics: metrics(7.5 * GB) },
+    { localTrackedBytes: 9 * GB, providerMetrics: metrics(9 * GB) },
+  ];
+  for (const input of cases) {
+    const result = budget({ ...input, incomingBytes: 300 * MB });
+    assert.ok(
+      !result.autoUploadAllowed || result.uploadAllowed,
+      `auto was more permissive than manual at ${result.localTrackedBytes}`,
+    );
+  }
+});
+
+test("a degraded ceiling configured above the hard ceiling is clamped down", () => {
+  // Degraded mode must never be more permissive than normal operation.
+  assert.equal(normalizeThresholds({ degradedBytes: 50 * GB }).degradedBytes, DEFAULT_PAUSE_THRESHOLD_BYTES);
+  assert.equal(normalizeThresholds({ degradedBytes: Number.NaN }).degradedBytes, DEFAULT_DEGRADED_THRESHOLD_BYTES);
+  assert.equal(normalizeThresholds({ degradedBytes: 3 * GB }).degradedBytes, 3 * GB);
 });
 
 // ─── Conservative measurement ────────────────────────────────────────────────

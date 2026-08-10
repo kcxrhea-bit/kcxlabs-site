@@ -419,6 +419,12 @@ export type MediaSettings = {
    */
   storageWarningBytes: number;
   storagePauseBytes: number;
+  /**
+   * Stricter ceiling applied to automatic uploads while Cloudflare's
+   * measurement is stale or unavailable, since local accounting alone cannot
+   * see untracked objects.
+   */
+  storageDegradedBytes: number;
 };
 
 export const defaultMediaSettings: MediaSettings = {
@@ -433,7 +439,9 @@ export const defaultMediaSettings: MediaSettings = {
   archiveRoot: "D:\\OldclipsfromKCxlabs",
   notifyOnDetection: true,
   notifyOnUpload: true,
-  // 7 GB / 8 GB against a 10 GB free allowance.
+  // 7 GB / 8 GB against a 10 GB free allowance, dropping to 6 GB for automatic
+  // uploads whenever Cloudflare's measurement cannot be obtained.
   storageWarningBytes: 7 * 1024 * 1024 * 1024,
   storagePauseBytes: 8 * 1024 * 1024 * 1024,
+  storageDegradedBytes: 6 * 1024 * 1024 * 1024,
 };

@@ -31,6 +31,16 @@
  *
  * The budget uses the MOST CONSERVATIVE of (1) and (2): the larger number wins.
  * If the provider says 6 GB and we think 7 GB, we plan against 7 GB.
+ *
+ * ── Degraded mode ───────────────────────────────────────────────────────────
+ *
+ * When (2) is stale or unavailable, only (1) is left — and (1) cannot see
+ * objects KCxLabs did not create. Rather than trust it up to the normal 8 GB
+ * ceiling, a stricter 6 GB ceiling applies to AUTOMATIC uploads, measured
+ * against the local figure. Manual uploads are not blocked by this, but they
+ * carry an explicit warning; they are never silently allowed through.
+ *
+ * Normal 7 GB / 8 GB behaviour is completely unchanged while metrics are fresh.
  */
 
 import type { ArchiveState, MediaRecordStatus } from "./types";
@@ -59,12 +69,31 @@ export const DEFAULT_WARNING_THRESHOLD_BYTES = 7 * GB;
  */
 export const DEFAULT_PAUSE_THRESHOLD_BYTES = 8 * GB;
 
+/**
+ * Degraded-mode ceiling for AUTOMATIC uploads, used whenever Cloudflare's
+ * measurement is stale or unavailable.
+ *
+ * Deliberately stricter than the 8 GB normal ceiling, and evaluated against the
+ * LOCAL tracked figure. The reason is specific: local accounting is authoritative
+ * about objects KCxLabs uploaded, but it is structurally blind to anything it
+ * did not create — orphaned multipart parts, objects written by another tool,
+ * or thumbnails left behind by a failed cleanup. When Cloudflare cannot confirm
+ * the real total, that blind spot is unbounded, so the safe response is to stop
+ * automatic uploads well short of the normal ceiling and wait for a real
+ * measurement rather than to keep writing on an unverifiable estimate.
+ *
+ * Normal 7 GB / 8 GB behaviour is untouched whenever metrics are fresh.
+ */
+export const DEFAULT_DEGRADED_THRESHOLD_BYTES = 6 * GB;
+
 /** Provider metrics older than this are treated as stale and not trusted alone. */
 export const DEFAULT_METRICS_STALE_AFTER_MS = 60 * 60 * 1000; // 1 hour
 
 export type StorageThresholds = {
   warningBytes: number;
   pauseBytes: number;
+  /** Auto-upload ceiling while provider metrics are stale or unavailable. */
+  degradedBytes: number;
   freeTierBytes: number;
   staleAfterMs: number;
 };
@@ -72,6 +101,7 @@ export type StorageThresholds = {
 export const defaultStorageThresholds: StorageThresholds = {
   warningBytes: DEFAULT_WARNING_THRESHOLD_BYTES,
   pauseBytes: DEFAULT_PAUSE_THRESHOLD_BYTES,
+  degradedBytes: DEFAULT_DEGRADED_THRESHOLD_BYTES,
   freeTierBytes: R2_FREE_TIER_BYTES,
   staleAfterMs: DEFAULT_METRICS_STALE_AFTER_MS,
 };
@@ -104,12 +134,20 @@ export function normalizeThresholds(input: Partial<StorageThresholds> = {}): Sto
   // A warning at or above the ceiling would never fire before the pause.
   if (warningBytes >= pauseBytes) warningBytes = Math.floor(pauseBytes * 0.875);
 
+  let degradedBytes =
+    Number.isFinite(input.degradedBytes) && (input.degradedBytes as number) > 0
+      ? (input.degradedBytes as number)
+      : DEFAULT_DEGRADED_THRESHOLD_BYTES;
+  // Degraded mode must never be more permissive than normal operation:
+  // a degraded ceiling above the pause threshold would defeat its purpose.
+  degradedBytes = Math.min(degradedBytes, pauseBytes);
+
   const staleAfterMs =
     Number.isFinite(input.staleAfterMs) && (input.staleAfterMs as number) > 0
       ? (input.staleAfterMs as number)
       : DEFAULT_METRICS_STALE_AFTER_MS;
 
-  return { warningBytes, pauseBytes, freeTierBytes, staleAfterMs };
+  return { warningBytes, pauseBytes, degradedBytes, freeTierBytes, staleAfterMs };
 }
 
 // ─── Provider metrics ────────────────────────────────────────────────────────
@@ -180,16 +218,46 @@ export type StorageBudget = {
 
   warningThresholdBytes: number;
   pauseThresholdBytes: number;
+  degradedThresholdBytes: number;
   freeTierBytes: number;
 
   /** Bytes remaining below the safety ceiling. Never negative. */
   headroomBytes: number;
   /** currentOnlineBytes + incomingBytes. What the check is actually against. */
   projectedBytes: number;
+  /** localTrackedBytes + incomingBytes. What degraded mode is checked against. */
+  projectedLocalBytes: number;
 
   status: StorageStatus;
+  /**
+   * True whenever Cloudflare's measurement is stale or missing, so the figures
+   * shown are not fully corroborated.
+   */
+  degradedMode: boolean;
+
+  /**
+   * The hard ceiling gate. False only when the 8 GB safety ceiling would be
+   * reached. Governs manual, owner-initiated uploads and restores.
+   */
   uploadAllowed: boolean;
-  /** Plain-English explanation, suitable for showing directly to the user. */
+
+  /**
+   * The strict gate for UNATTENDED uploads (the NVIDIA watcher in Auto mode).
+   *
+   * Always at least as strict as `uploadAllowed`, and stricter in degraded
+   * mode. Automatic uploads happen without anyone watching, so they are the
+   * ones held back when the true bucket total cannot be confirmed.
+   */
+  autoUploadAllowed: boolean;
+  /** Why automatic uploads are paused, or null when they are running. */
+  autoUploadPausedReason: string | null;
+  /**
+   * Warning to show before a manual upload proceeds, or null. Non-null means
+   * "let them continue, but say this first" — never a silent proceed.
+   */
+  manualUploadWarning: string | null;
+
+  /** Plain-English explanation of the overall state. */
   reason: string;
 };
 
@@ -244,6 +312,10 @@ export function evaluateStorageBudget(input: StorageBudgetInput): StorageBudget 
 
   const headroomBytes = Math.max(0, thresholds.pauseBytes - currentOnlineBytes);
   const projectedBytes = currentOnlineBytes + incomingBytes;
+  const projectedLocalBytes = localTrackedBytes + incomingBytes;
+
+  // Degraded mode: Cloudflare has not corroborated our figures recently.
+  const degradedMode = providerReportedBytes === null || metricsStale;
 
   // ── Decision, most severe first ──
   let status: StorageStatus;
@@ -286,6 +358,41 @@ export function evaluateStorageBudget(input: StorageBudgetInput): StorageBudget 
     reason = `Storage is normal: ${formatGb(currentOnlineBytes)} used, ${formatGb(headroomBytes)} of headroom.`;
   }
 
+  // ── Automatic-upload gate ──
+  //
+  // Starts from the hard ceiling, then applies the stricter degraded rule. An
+  // unattended upload must never proceed on figures Cloudflare has not
+  // corroborated once the local total alone is no longer comfortably small.
+  let autoUploadAllowed = uploadAllowed;
+  let autoUploadPausedReason: string | null = uploadAllowed ? null : reason;
+  let manualUploadWarning: string | null = null;
+
+  if (degradedMode) {
+    const measurementNote =
+      providerReportedBytes === null
+        ? "Cloudflare storage metrics are unavailable"
+        : "Cloudflare storage metrics are out of date";
+
+    if (projectedLocalBytes >= thresholds.degradedBytes) {
+      autoUploadAllowed = false;
+      autoUploadPausedReason =
+        `Automatic uploads paused. ${measurementNote}, and KCxLabs is tracking ` +
+        `${formatGb(projectedLocalBytes)}, at or past the ${formatGb(thresholds.degradedBytes)} ` +
+        `limit that applies while storage cannot be confirmed. Automatic uploads resume once ` +
+        `Cloudflare reports current usage. You can still upload manually.`;
+      manualUploadWarning =
+        `${measurementNote}. KCxLabs is tracking ${formatGb(projectedLocalBytes)} but cannot ` +
+        `confirm the real total, which may be higher if the bucket contains files KCxLabs did ` +
+        `not upload. Continue only if you are sure there is room.`;
+    } else {
+      // Below the degraded ceiling automatic uploads continue, but the figures
+      // are still uncorroborated, so a manual upload says so first.
+      manualUploadWarning =
+        `${measurementNote}. Proceeding using the KCxLabs local estimate of ` +
+        `${formatGb(localTrackedBytes)}, which counts only media KCxLabs knows about.`;
+    }
+  }
+
   return {
     currentOnlineBytes,
     localTrackedBytes,
@@ -295,11 +402,17 @@ export function evaluateStorageBudget(input: StorageBudgetInput): StorageBudget 
     metricsStale,
     warningThresholdBytes: thresholds.warningBytes,
     pauseThresholdBytes: thresholds.pauseBytes,
+    degradedThresholdBytes: thresholds.degradedBytes,
     freeTierBytes: thresholds.freeTierBytes,
     headroomBytes,
     projectedBytes,
+    projectedLocalBytes,
     status,
+    degradedMode,
     uploadAllowed,
+    autoUploadAllowed,
+    autoUploadPausedReason,
+    manualUploadWarning,
     reason,
   };
 }
