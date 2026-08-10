@@ -54,4 +54,12 @@ await Promise.all([
     format: "cjs",
     outfile: "dist-electron/media-core.cjs",
   }),
+  // Dependency-free API library (config validation, auth crypto, id generation)
+  // so the node:test suites exercise the same compiled code the handlers run.
+  build({
+    ...shared,
+    entryPoints: ["api/_lib/index.ts"],
+    format: "cjs",
+    outfile: "dist-electron/api-core.cjs",
+  }),
 ]);
