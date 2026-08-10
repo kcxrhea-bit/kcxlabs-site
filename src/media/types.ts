@@ -218,6 +218,40 @@ export function toPublicMediaItem(item: MediaItem): PublicMediaItem {
   };
 }
 
+// ─── Retention configuration ─────────────────────────────────────────────────
+
+/**
+ * Default days an item stays online before it becomes ARCHIVE ELIGIBLE.
+ *
+ * Eligibility is not deletion. Reaching this age only means the desktop may now
+ * download the original for local safekeeping; the cloud copy is removed solely
+ * once `mayDeleteFromCloud` is satisfied, which requires a checksum-verified
+ * local archive. Shortening this value therefore shortens how soon archiving is
+ * *offered*, and changes nothing about the deletion gate.
+ */
+export const DEFAULT_RETENTION_DAYS = 10;
+
+/** Offered in the Media settings picker. Any other value may still be set. */
+export const retentionPresetDays = [3, 7, 10, 14, 30] as const;
+
+export const MIN_RETENTION_DAYS = 1;
+/** ~10 years. An upper bound keeps a typo from producing a nonsense date. */
+export const MAX_RETENTION_DAYS = 3650;
+
+/**
+ * Coerce a user-supplied retention value into a usable number of days.
+ *
+ * Invalid input (non-numeric, zero, negative) falls back to the default rather
+ * than being passed through, because `retention.ts` treats a non-positive value
+ * as "never expires" — a silent behaviour change that a typo should not cause.
+ * To genuinely keep something forever, use Keep Online, which is explicit.
+ */
+export function normalizeRetentionDays(value: unknown): number {
+  const days = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(days) || days < MIN_RETENTION_DAYS) return DEFAULT_RETENTION_DAYS;
+  return Math.min(Math.floor(days), MAX_RETENTION_DAYS);
+}
+
 // ─── Media settings ──────────────────────────────────────────────────────────
 
 /** Desktop-side preferences. Contains no credentials — tokens live in safeStorage. */
@@ -235,7 +269,7 @@ export type MediaSettings = {
 
 export const defaultMediaSettings: MediaSettings = {
   defaultVisibility: defaultMediaVisibility,
-  retentionDays: 30,
+  retentionDays: DEFAULT_RETENTION_DAYS,
   keepOnlineDefault: false,
   // Off by default: automatic upload of whatever appears on disk is a decision
   // the operator opts into, not a default behaviour.

@@ -1,8 +1,12 @@
 -- 001_media_init.sql — KCx Media Center initial schema
 --
 -- Target: Postgres 15+ (Neon). Apply with `npm run db:migrate`; never edit a
--- production schema by hand. Migrations are append-only: to change something,
--- add 002_*.sql rather than editing this file, because this one has already run.
+-- production schema by hand.
+--
+-- Migrations are append-only ONCE APPLIED: to change something after this file
+-- has run against any database, add 002_*.sql instead of editing it. This file
+-- has not yet been applied anywhere (no Neon project exists), so the retention
+-- default was corrected in place rather than shipping a same-day 002.
 --
 -- Design notes:
 --   * Real columns, not a JSON blob, so retention and listing queries can be
@@ -117,7 +121,10 @@ CREATE TABLE IF NOT EXISTS media (
   -- Lifecycle
   status                 media_record_status NOT NULL DEFAULT 'pending',
   visibility             media_visibility NOT NULL DEFAULT 'unlisted',
-  retention_days         INTEGER NOT NULL DEFAULT 30,
+  -- Days online before an item becomes ARCHIVE ELIGIBLE. Kept in sync with
+  -- DEFAULT_RETENTION_DAYS in src/media/types.ts. This governs only when
+  -- archiving is offered; the deletion gate below is unaffected by it.
+  retention_days         INTEGER NOT NULL DEFAULT 10 CHECK (retention_days >= 1),
   keep_online            BOOLEAN NOT NULL DEFAULT FALSE,
   archive_state          archive_state NOT NULL DEFAULT 'active',
   archive_eligible_at    TIMESTAMPTZ,

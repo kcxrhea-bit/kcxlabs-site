@@ -9,16 +9,23 @@ import {
   verifyArchiveCopy,
   daysUntilArchiveEligible,
   canTransitionArchiveState,
+  DEFAULT_RETENTION_DAYS,
 } from "../dist-electron/media-core.cjs";
 
 const DAY = 86_400_000;
 const uploadedAt = "2026-01-01T00:00:00.000Z";
 
-/** Baseline: an ordinary 30-day item with no local copy yet. */
+/**
+ * Baseline: an item at the default retention with no local copy yet.
+ *
+ * Retention length is read from DEFAULT_RETENTION_DAYS rather than hard-coded,
+ * so changing the default cannot silently invalidate these assertions. The
+ * safety tests below deliberately do not depend on the number at all.
+ */
 function item(overrides = {}) {
   return {
     uploadedAt,
-    retentionDays: 30,
+    retentionDays: DEFAULT_RETENTION_DAYS,
     keepOnline: false,
     archiveState: "active",
     localArchiveVerified: false,
@@ -31,23 +38,44 @@ const at = (days) => new Date(Date.parse(uploadedAt) + days * DAY);
 
 // ─── Archive eligibility (requirement 14) ────────────────────────────────────
 
+test("the default retention is 10 days", () => {
+  assert.equal(DEFAULT_RETENTION_DAYS, 10);
+});
+
 test("archive eligibility is exactly retentionDays after upload", () => {
-  assert.equal(calculateArchiveEligibleAt(item()), "2026-01-31T00:00:00.000Z");
+  // Default (10 days) from 2026-01-01.
+  assert.equal(calculateArchiveEligibleAt(item()), "2026-01-11T00:00:00.000Z");
+  // An explicit custom retention is honoured rather than overridden.
+  assert.equal(
+    calculateArchiveEligibleAt(item({ retentionDays: 30 })),
+    "2026-01-31T00:00:00.000Z",
+  );
+  assert.equal(calculateArchiveEligibleAt(item({ retentionDays: 3 })), "2026-01-04T00:00:00.000Z");
 });
 
 test("an item is not archive eligible before its retention age", () => {
-  assert.equal(isArchiveEligible(item(), at(29)), false);
-  assert.equal(isArchiveEligible(item(), at(29.99)), false);
+  assert.equal(isArchiveEligible(item(), at(9)), false);
+  assert.equal(isArchiveEligible(item(), at(9.99)), false);
 });
 
 test("an item becomes archive eligible at and after its retention age", () => {
-  assert.equal(isArchiveEligible(item(), at(30)), true);
+  assert.equal(isArchiveEligible(item(), at(10)), true);
   assert.equal(isArchiveEligible(item(), at(400)), true);
 });
 
+test("a custom retention shifts eligibility without affecting anything else", () => {
+  for (const days of [3, 7, 10, 14, 30]) {
+    const custom = item({ retentionDays: days });
+    assert.equal(isArchiveEligible(custom, at(days - 0.01)), false, `${days}d: too early`);
+    assert.equal(isArchiveEligible(custom, at(days)), true, `${days}d: due`);
+    // Eligibility never implies deletion, at any retention length.
+    assert.equal(mayDeleteFromCloud(custom), false, `${days}d: must not be deletable`);
+  }
+});
+
 test("days until eligibility counts down and goes negative when overdue", () => {
-  assert.equal(daysUntilArchiveEligible(item(), at(0)), 30);
-  assert.equal(daysUntilArchiveEligible(item(), at(31)), -1);
+  assert.equal(daysUntilArchiveEligible(item(), at(0)), 10);
+  assert.equal(daysUntilArchiveEligible(item(), at(11)), -1);
 });
 
 test("a non-positive or malformed retention never expires, rather than expiring instantly", () => {
@@ -104,10 +132,19 @@ test("cloud deletion is permitted only once local archival is complete and verif
   assert.equal(mayDeleteFromCloud(pending), true);
 });
 
+test("a PC offline at day 10 causes nothing destructive", () => {
+  // The item becomes eligible exactly on schedule, and stays fully intact
+  // because no desktop ever downloaded or verified it.
+  const stale = item({ archiveState: "archive_eligible" });
+  assert.equal(isArchiveEligible(stale, at(10)), true);
+  assert.equal(mayDeleteFromCloud(stale), false);
+  assert.match(describeDeletionBlock(stale), /verified local archive/);
+});
+
 test("an offline desktop never causes cloud deletion, however long it stays offline", () => {
   // The PC is off: the item ages far past retention but is never downloaded,
   // so localArchiveVerified stays false and deletion stays refused. Forever.
-  for (const days of [31, 60, 180, 365, 3650]) {
+  for (const days of [11, 31, 60, 180, 365, 3650]) {
     const stale = item({ archiveState: "archive_eligible" });
     assert.equal(isArchiveEligible(stale, at(days)), true, `eligible at day ${days}`);
     assert.equal(mayDeleteFromCloud(stale), false, `still undeletable at day ${days}`);

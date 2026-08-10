@@ -14,6 +14,11 @@ import {
   defaultMediaSettings,
   toPublicMediaItem,
   DEFAULT_MAX_UPLOAD_BYTES,
+  DEFAULT_RETENTION_DAYS,
+  retentionPresetDays,
+  normalizeRetentionDays,
+  MIN_RETENTION_DAYS,
+  MAX_RETENTION_DAYS,
 } from "../dist-electron/media-core.cjs";
 
 const bytes = (...values) => Uint8Array.from(values);
@@ -158,7 +163,40 @@ test("uploads default to unlisted, so sharing is always a deliberate act", () =>
   assert.equal(defaultMediaVisibility, "unlisted");
   assert.equal(defaultMediaSettings.defaultVisibility, "unlisted");
   assert.equal(defaultMediaSettings.autoUpload, false);
-  assert.equal(defaultMediaSettings.retentionDays, 30);
+  assert.equal(defaultMediaSettings.retentionDays, 10);
+});
+
+test("the default retention is 10 days and is shared by the model and settings", () => {
+  assert.equal(DEFAULT_RETENTION_DAYS, 10);
+  // One source of truth: settings must not drift from the model constant.
+  assert.equal(defaultMediaSettings.retentionDays, DEFAULT_RETENTION_DAYS);
+});
+
+test("the settings picker offers the documented retention choices", () => {
+  assert.deepEqual([...retentionPresetDays], [3, 7, 10, 14, 30]);
+  assert.ok(retentionPresetDays.includes(DEFAULT_RETENTION_DAYS));
+});
+
+test("a custom retention outside the presets is accepted", () => {
+  assert.equal(normalizeRetentionDays(1), 1);
+  assert.equal(normalizeRetentionDays(45), 45);
+  assert.equal(normalizeRetentionDays(365), 365);
+  assert.equal(normalizeRetentionDays("21"), 21);
+});
+
+test("an invalid retention falls back to the default rather than meaning 'never expire'", () => {
+  // retention.ts treats a non-positive value as "never expires". A typo must
+  // not silently opt an item out of archiving; Keep Online is the explicit way.
+  for (const bad of [0, -1, -999, Number.NaN, Infinity, null, undefined, "", "abc", {}]) {
+    assert.equal(normalizeRetentionDays(bad), DEFAULT_RETENTION_DAYS, `input: ${String(bad)}`);
+  }
+});
+
+test("retention is clamped to a sane upper bound and floored to whole days", () => {
+  assert.equal(normalizeRetentionDays(10.9), 10);
+  assert.equal(normalizeRetentionDays(999_999), 3650);
+  assert.equal(normalizeRetentionDays(MAX_RETENTION_DAYS), MAX_RETENTION_DAYS);
+  assert.equal(normalizeRetentionDays(MIN_RETENTION_DAYS), MIN_RETENTION_DAYS);
 });
 
 test("only public media is listable; private and unlisted are excluded from listings", () => {
