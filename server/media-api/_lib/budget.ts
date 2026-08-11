@@ -1,7 +1,7 @@
 import { mediaRepository, metricsRepository, type Db } from "./db";
 import { fetchStorageMetrics } from "./metrics";
 import type { AppConfig } from "./config";
-import { evaluateStorageBudget, type StorageBudget } from "../../src/media/storage-budget";
+import { evaluateStorageBudget, type StorageBudget } from "../../../src/media/storage-budget";
 
 export async function currentStorageBudget(
   db: Db,

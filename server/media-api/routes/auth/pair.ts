@@ -1,8 +1,8 @@
-import { deviceTokenExpiry, hashDeviceToken, verifyPassword } from "../_lib/auth";
-import { generateDeviceToken, generateDeviceTokenId } from "../_lib/ids";
-import { authRepository, createDb } from "../_lib/db";
-import { loadAppConfig } from "../_lib/config";
-import { internalError, json, readJson, requireMethod, toNodeHandler } from "../_lib/http";
+import { deviceTokenExpiry, hashDeviceToken, verifyPassword } from "../../_lib/auth";
+import { generateDeviceToken, generateDeviceTokenId } from "../../_lib/ids";
+import { authRepository, createDb } from "../../_lib/db";
+import { loadAppConfig } from "../../_lib/config";
+import { internalError, json, readJson, requireMethod, toNodeHandler } from "../../_lib/http";
 
 async function handler(request: Request): Promise<Response> {
   const methodError = requireMethod(request, "POST");

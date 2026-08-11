@@ -21,7 +21,7 @@
  */
 
 import type { AnalyticsConfig } from "./config";
-import type { ProviderMetrics } from "../../src/media/storage-budget";
+import type { ProviderMetrics } from "../../../src/media/storage-budget";
 
 const GRAPHQL_ENDPOINT = "https://api.cloudflare.com/client/v4/graphql";
 

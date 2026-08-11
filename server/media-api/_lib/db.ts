@@ -22,7 +22,7 @@ import type {
   MediaKind,
   MediaRecordStatus,
   MediaVisibility,
-} from "../../src/media/types";
+} from "../../../src/media/types";
 
 export type Db = NeonQueryFunction<false, false>;
 

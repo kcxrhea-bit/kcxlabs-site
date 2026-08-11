@@ -1,7 +1,7 @@
-import { createDb, mediaRepository } from "../_lib/db";
-import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../_lib/http";
-import { headObject, r2Context } from "../_lib/r2";
-import { calculateArchiveEligibleAt } from "../../src/media/retention";
+import { createDb, mediaRepository } from "../../_lib/db";
+import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http";
+import { headObject, r2Context } from "../../_lib/r2";
+import { calculateArchiveEligibleAt } from "../../../../src/media/retention";
 async function handler(request: Request): Promise<Response>{
  const method=requireMethod(request,"POST");if(method)return method;const context=await requireDevice(request);if(isResponse(context))return context;const body=await readJson(request);const id=typeof body?.mediaId==="string"?body.mediaId:"";if(!id)return json(400,{error:"invalid_request"});
  try{const repo=mediaRepository(createDb(context.config.database));const item=await repo.byId(context.ownerId,id);if(!item)return json(404,{error:"not_found"});const shareUrl=`${context.config.publicSiteOrigin}/c/${item.publicId}`;if(item.status==="active"&&item.originalOnline)return json(200,{item,shareUrl,idempotent:true});

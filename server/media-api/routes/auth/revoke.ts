@@ -1,5 +1,5 @@
-import { authRepository, createDb } from "../_lib/db";
-import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../_lib/http";
+import { authRepository, createDb } from "../../_lib/db";
+import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http";
 
 async function handler(request: Request): Promise<Response> {
   const methodError = requireMethod(request, "POST");

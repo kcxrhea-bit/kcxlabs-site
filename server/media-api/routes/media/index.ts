@@ -1,5 +1,5 @@
-import { createDb, mediaRepository } from "../_lib/db";
-import { internalError, isResponse, json, requestUrl, requireDevice, requireMethod, toNodeHandler } from "../_lib/http";
+import { createDb, mediaRepository } from "../../_lib/db";
+import { internalError, isResponse, json, requestUrl, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http";
 
 async function handler(request: Request): Promise<Response> {
   const method = requireMethod(request, "GET"); if (method) return method;

@@ -46,7 +46,7 @@ await Promise.all([
   // so the node:test suites exercise the same compiled code the handlers run.
   build({
     ...shared,
-    entryPoints: ["api/_lib/index.ts"],
+    entryPoints: ["server/media-api/_lib/index.ts"],
     format: "cjs",
     outfile: "dist-electron/api-core.cjs",
   }),
@@ -57,7 +57,7 @@ await Promise.all([
   // compiled code the route handlers actually import.
   build({
     ...shared,
-    entryPoints: ["api/_lib/http.ts"],
+    entryPoints: ["server/media-api/_lib/http.ts"],
     format: "cjs",
     outfile: "dist-electron/api-http.cjs",
   }),
@@ -66,20 +66,30 @@ await Promise.all([
   // with an unauthenticated/malformed request and prove they return through
   // the adapter rather than hang — without ever needing live Neon/R2
   // credentials, since every one of these short-circuits (400/401) before
-  // touching either.
+  // touching either. `outbase` keeps the output layout (dist-electron/routes/...)
+  // identical to before the api/ -> server/media-api/routes move.
   build({
     ...shared,
     entryPoints: [
-      "api/auth/pair.ts",
-      "api/auth/revoke.ts",
-      "api/media/check-hash.ts",
-      "api/media/upload-authorize.ts",
-      "api/media/finalize.ts",
-      "api/archive/jobs.ts",
+      "server/media-api/routes/auth/pair.ts",
+      "server/media-api/routes/auth/revoke.ts",
+      "server/media-api/routes/media/check-hash.ts",
+      "server/media-api/routes/media/upload-authorize.ts",
+      "server/media-api/routes/media/finalize.ts",
+      "server/media-api/routes/archive/jobs.ts",
     ],
     format: "cjs",
     outdir: "dist-electron/routes",
-    outbase: "api",
+    outbase: "server/media-api/routes",
     outExtension: { ".js": ".cjs" },
+  }),
+  // The single Vercel catch-all entrypoint, bundled so a test can prove its
+  // routing table (`resolveRoute`) sends every one of the 17 real URLs to the
+  // correct route module without needing a live Vercel deployment.
+  build({
+    ...shared,
+    entryPoints: ["api/[...path].ts"],
+    format: "cjs",
+    outfile: "dist-electron/api-dispatch.cjs",
   }),
 ]);

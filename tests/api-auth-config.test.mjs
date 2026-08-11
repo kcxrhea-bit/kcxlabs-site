@@ -278,7 +278,7 @@ test("the SPA catch-all rewrite excludes /api so functions are reachable", () =>
 });
 
 test("the database layer binds parameters and never interpolates values into SQL", () => {
-  const source = readFileSync(new URL("../api/_lib/db.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../server/media-api/_lib/db.ts", import.meta.url), "utf8");
   // A `${...}` inside a db`` template is a bound parameter; string concatenation
   // into a query would not be. Guard against the latter creeping in.
   assert.ok(!/db\.query\(\s*[`"'].*\$\{/s.test(source), "found interpolation into a raw query string");

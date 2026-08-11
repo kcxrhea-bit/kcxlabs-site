@@ -1,7 +1,7 @@
-import { archiveRepository, createDb, mediaRepository } from "../../_lib/db";
-import { internalError, isResponse, json, requestUrl, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http";
-import { deleteObject, headObject, r2Context } from "../../_lib/r2";
-import { mayDeleteFromCloud, toRetentionInput } from "../../../src/media/retention";
+import { archiveRepository, createDb, mediaRepository } from "../../../_lib/db";
+import { internalError, isResponse, json, requestUrl, requireDevice, requireMethod, toNodeHandler } from "../../../_lib/http";
+import { deleteObject, headObject, r2Context } from "../../../_lib/r2";
+import { mayDeleteFromCloud, toRetentionInput } from "../../../../../src/media/retention";
 
 /** Reconciles a guarded archival delete. `cloud_delete_pending` is recoverable after a crash. */
 async function handler(request: Request): Promise<Response> {
