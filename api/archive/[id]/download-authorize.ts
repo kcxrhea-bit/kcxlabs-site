@@ -6,7 +6,7 @@ import { presignDownload, r2Context } from "../../_lib/r2";
 async function handler(request: Request): Promise<Response> {
   const method = requireMethod(request, "POST"); if (method) return method;
   const context = await requireDevice(request); if (isResponse(context)) return context;
-  const id = requestUrl(request).pathname.split("/").at(-2) ?? "";
+  const id = (requestUrl(request).pathname.split("/").slice(-2)[0] ?? "");
   try {
     const item = await mediaRepository(createDb(context.config.database)).byId(context.ownerId, id);
     if (!item) return json(404, { error: "not_found" });

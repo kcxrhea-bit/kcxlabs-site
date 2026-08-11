@@ -7,7 +7,7 @@ import { mayDeleteFromCloud, toRetentionInput } from "../../../src/media/retenti
 async function handler(request: Request): Promise<Response> {
   const method = requireMethod(request, "POST"); if (method) return method;
   const context = await requireDevice(request); if (isResponse(context)) return context;
-  const id = requestUrl(request).pathname.split("/").at(-2) ?? "";
+  const id = (requestUrl(request).pathname.split("/").slice(-2)[0] ?? "");
   try {
     const db = createDb(context.config.database); const media = mediaRepository(db); const archive = archiveRepository(db);
     let item = await media.byId(context.ownerId, id); if (!item) return json(404, { error: "not_found" });
