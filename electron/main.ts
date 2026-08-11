@@ -2,11 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { desktopIpcChannels } from "./ipc";
-import type { DesktopStatus, NewCatalogProject, ReleaseDraft } from "../src/shared/desktop";
+import type { DesktopStatus, MediaVisibility, NewCatalogProject, ReleaseDraft } from "../src/shared/desktop";
 import { createCatalogService } from "./catalog-service";
 import { previewRelease } from "./release-planner";
 import { PlatformService } from "./platform-service";
 import { scanForProjects } from "./project-discovery";
+import { MediaService } from "./media-service";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
   ipcMain.handle(desktopIpcChannels.getStatus, getDesktopStatus);
   const catalog = createCatalogService(app.getPath("userData"));
   const platform = new PlatformService(app.getAppPath(), app.getPath("userData"));
+  const media = new MediaService(app.getPath("userData"));
   ipcMain.handle(desktopIpcChannels.listProjects, () => catalog.list());
   ipcMain.handle(desktopIpcChannels.addProject, (_event, input: NewCatalogProject) => catalog.add(input));
   ipcMain.handle(desktopIpcChannels.chooseProjectFolder, async () => {
@@ -123,6 +125,70 @@ app.whenReady().then(() => {
   ipcMain.handle(desktopIpcChannels.stopWebsitePreview, () => platform.stopPreview());
   ipcMain.handle(desktopIpcChannels.scanTheme, async (_event, id: string) => platform.scanTheme((await catalog.list()).find((project) => project.id === id)));
   ipcMain.handle(desktopIpcChannels.syncTheme, async (_event, id: string) => platform.syncTheme((await catalog.list()).find((project) => project.id === id)));
+
+
+  // ─── Media Center ──────────────────────────────────────────────────────────
+
+  ipcMain.handle(desktopIpcChannels.chooseMediaFile, async () => {
+    if (!mainWindow) return null;
+
+    const selection = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a video file",
+      properties: ["openFile"],
+      filters: [
+        {
+          name: "Video files",
+          extensions: ["mp4", "mov", "mkv", "webm", "avi", "m4v"],
+        },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+
+    return selection.canceled ? null : selection.filePaths[0];
+  });
+
+  ipcMain.handle(
+    desktopIpcChannels.listPendingMediaUploads,
+    () => media.listPending(),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.startMediaUpload,
+    (_event, filePath: string, visibility: MediaVisibility) =>
+      media.upload(filePath, visibility, (record) =>
+        mainWindow?.webContents.send(
+          desktopIpcChannels.mediaProgress,
+          record,
+        ),
+      ),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.retryMediaFinalize,
+    (_event, id: string) =>
+      media.retryFinalize(id, (record) =>
+        mainWindow?.webContents.send(
+          desktopIpcChannels.mediaProgress,
+          record,
+        ),
+      ),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.getDevicePairingStatus,
+    () => media.getPairingStatus(),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.pairDevice,
+    (_event, email: string, password: string, deviceName: string) =>
+      media.pair(email, password, deviceName),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.unpairDevice,
+    () => media.unpair(),
+  );
   createWindow();
 
   app.on("activate", () => {

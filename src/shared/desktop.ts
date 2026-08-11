@@ -32,6 +32,14 @@ export type DesktopApi = {
   stopWebsitePreview(): Promise<PreviewStatus>;
   scanTheme(projectId: string): Promise<ThemeScan>;
   syncTheme(projectId: string): Promise<OperationResult>;
+  chooseMediaFile(): Promise<string | null>;
+  listPendingMediaUploads(): Promise<MediaUploadRecord[]>;
+  startMediaUpload(filePath: string, visibility: MediaVisibility): Promise<MediaUploadRecord>;
+  retryMediaFinalize(id: string): Promise<MediaUploadRecord>;
+  onMediaProgress(listener: (record: MediaUploadRecord) => void): () => void;
+  getDevicePairingStatus(): Promise<DevicePairingStatus>;
+  pairDevice(email: string, password: string, deviceName: string): Promise<OperationResult>;
+  unpairDevice(): Promise<OperationResult>;
 };
 
 export type ReleaseChannel = "stable" | "beta" | "alpha" | "experimental";
@@ -81,3 +89,32 @@ export type DeploymentReadiness = { branch: string; gitStatus: string[]; website
 export type PreviewStatus = { running: boolean; url: string | null; stdout: string[]; stderr: string[] };
 export type ThemeFileState = { source: string; destination: string; status: "current" | "outdated" | "missing" };
 export type ThemeScan = { projectId: string; projectName: string; files: ThemeFileState[]; ready: boolean };
+
+export type MediaVisibility = "private" | "unlisted" | "public";
+export type MediaUploadStage = "hashing" | "checking" | "authorizing" | "uploading" | "uploaded" | "finalizing" | "finalized" | "failed";
+
+// Renderer-visible upload state. Never carries the presigned R2 URL, upload headers, the device
+// bearer token, or any server credential — those stay inside the main-process MediaService.
+export type MediaUploadRecord = {
+  id: string;
+  fileName: string;
+  filePath: string;
+  bytes: number;
+  sha256: string | null;
+  stage: MediaUploadStage;
+  progress: number;
+  visibility: MediaVisibility;
+  mediaId: string | null;
+  // True only once the PUT to storage has completed successfully. Retry-finalization must be
+  // gated on this, not on mediaId alone — mediaId is assigned before the object upload starts.
+  objectUploaded: boolean;
+  publicId: string | null;
+  shareUrl: string | null;
+  duplicate: boolean;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Never carries the device bearer token — only whether one is stored, and non-secret metadata.
+export type DevicePairingStatus = { paired: boolean; deviceName: string | null; expiresAt: string | null };

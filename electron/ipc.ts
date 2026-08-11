@@ -25,6 +25,14 @@ export const desktopIpcChannels = {
   stopWebsitePreview: "website-preview:stop",
   scanTheme: "theme:scan",
   syncTheme: "theme:sync",
+  chooseMediaFile: "media:choose-file",
+  listPendingMediaUploads: "media:list-pending",
+  startMediaUpload: "media:start-upload",
+  retryMediaFinalize: "media:retry-finalize",
+  mediaProgress: "media:progress",
+  getDevicePairingStatus: "media:pairing-status",
+  pairDevice: "media:pair",
+  unpairDevice: "media:unpair",
 } as const;
 
 export type DesktopIpcChannel = (typeof desktopIpcChannels)[keyof typeof desktopIpcChannels];

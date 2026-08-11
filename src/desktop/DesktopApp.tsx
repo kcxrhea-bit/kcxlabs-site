@@ -1,11 +1,26 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Activity, Boxes, CloudUpload, FileText, FolderKanban, Gauge, History, MonitorPlay, Palette, Rocket, Settings } from "lucide-react";
+import { Activity, Boxes, CloudUpload, FileText, Film, FolderKanban, Gauge, History, MonitorPlay, Palette, Rocket, Settings } from "lucide-react";
 import type { ActivityEntry, CatalogProject, DeploymentReadiness, DesktopStatus, DiscoveredProject, NewCatalogProject, PreviewStatus, ReleasePreview, ThemeScan, WebsiteChangePreview, WebsiteChangeRequest, WebsiteProduct } from "../shared/desktop";
 import { PatchImport, ProjectFolderRegistration, ReleaseWizard } from "./WorkflowComponents";
 import { ArtifactPreparation } from "./ArtifactPreparation";
+import { MediaCenter } from "./MediaCenter";
 import "./desktop.css";
 
-const navigation = [[Gauge, "Dashboard"], [FolderKanban, "Projects"], [FileText, "Artifacts"], [Rocket, "Release Publisher"], [FileText, "Patch Import"], [FileText, "Website"], [MonitorPlay, "Website Preview"], [CloudUpload, "Deployment"], [Palette, "Theme Sync"], [History, "Release History"], [Activity, "Activity"], [Settings, "Settings"]] as const;
+const navigation = [
+  [Gauge, "Dashboard"],
+  [FolderKanban, "Projects"],
+  [FileText, "Artifacts"],
+  [Rocket, "Release Publisher"],
+  [FileText, "Patch Import"],
+  [FileText, "Website"],
+  [MonitorPlay, "Website Preview"],
+  [Film, "Media Center"],
+  [CloudUpload, "Deployment"],
+  [Palette, "Theme Sync"],
+  [History, "Release History"],
+  [Activity, "Activity"],
+  [Settings, "Settings"],
+] as const;
 const initialProject: NewCatalogProject = { name: "", slug: "", folder: "", description: "", category: "", currentVersion: "", releaseChannel: "stable", websiteVisible: true, downloadVisible: true };
 
 export function DesktopApp() {
@@ -22,6 +37,7 @@ function Page({ page, projects, refreshProjects, setMessage }: { page: string; p
   if (page === "Patch Import") return <PatchImport projects={projects} setMessage={setMessage} />;
   if (page === "Website") return <Website setMessage={setMessage} />;
   if (page === "Website Preview") return <Preview setMessage={setMessage} />;
+  if (page === "Media Center") return <MediaCenter setMessage={setMessage} />;
   if (page === "Deployment") return <Deployment setMessage={setMessage} />;
   if (page === "Theme Sync") return <Theme projects={projects} setMessage={setMessage} />;
   if (page === "Activity" || page === "Release History") return <Log releaseOnly={page === "Release History"} setMessage={setMessage} />;
