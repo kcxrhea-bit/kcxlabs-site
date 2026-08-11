@@ -17,7 +17,11 @@
       "destination": "/assets/$1"
     },
     {
-      "source": "/(.*)",
+      "source": "/api/:path*",
+      "destination": "/api/router?__kcx_path=:path*"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]

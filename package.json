@@ -11,9 +11,16 @@
     "build:electron": "node scripts/build-electron.mjs",
     "typecheck": "tsc -b && tsc -p electron/tsconfig.json --noEmit",
     "test": "npm run build:electron && node --test tests/*.test.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "config:doctor": "node scripts/config-doctor.mjs",
+    "auth:hash": "node scripts/auth-hash.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:verify": "node scripts/db-verify.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1107.0",
+    "@aws-sdk/s3-request-presigner": "^3.1107.0",
+    "@neondatabase/serverless": "^1.1.0",
     "@tailwindcss/vite": "^4.1.8",
     "framer-motion": "^12.15.0",
     "lucide-react": "^0.511.0",
@@ -22,9 +29,9 @@
     "tailwindcss": "^4.1.8"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
-    "@types/node": "^26.1.1",
     "@vitejs/plugin-react": "^4.5.0",
     "electron": "^43.1.1",
     "esbuild": "^0.28.1",

@@ -85,10 +85,16 @@ test("redirects are declared before the SPA catch-all rewrite", () => {
   // the catch-all. Assert both that redirects exist and that the catch-all is
   // still last among rewrites.
   assert.ok((vercelConfig.redirects ?? []).length > 0, "redirects must be declared");
-  assert.equal(vercelConfig.rewrites.at(-1).source, "/(.*)");
   assert.equal(vercelConfig.rewrites.at(-1).destination, "/index.html");
-  const catchAllIndex = vercelConfig.rewrites.findIndex((rule) => rule.source === "/(.*)");
+  // The catch-all now excludes /api so serverless functions are reachable, so
+  // it is identified by its destination rather than by a literal pattern.
+  const catchAllIndex = vercelConfig.rewrites.findIndex((rule) => rule.destination === "/index.html");
   assert.equal(catchAllIndex, vercelConfig.rewrites.length - 1);
+  // It must still match every SPA route.
+  const pattern = new RegExp(`^${vercelConfig.rewrites.at(-1).source}$`);
+  for (const path of ["/", "/beta", "/nexus", "/nexus/portal", "/resume"]) {
+    assert.ok(pattern.test(path), `SPA route stopped matching the catch-all: ${path}`);
+  }
 });
 
 test("canonical nested deep links keep their assets resolvable", () => {
