@@ -83,12 +83,13 @@ await Promise.all([
     outbase: "server/media-api/routes",
     outExtension: { ".js": ".cjs" },
   }),
-  // The single Vercel catch-all entrypoint, bundled so a test can prove its
+  // The single Vercel Function entrypoint, bundled so a test can prove its
   // routing table (`resolveRoute`) sends every one of the 17 real URLs to the
-  // correct route module without needing a live Vercel deployment.
+  // correct route module, and that the vercel.json rewrite's __kcx_path
+  // reconstruction works, without needing a live Vercel deployment.
   build({
     ...shared,
-    entryPoints: ["api/[...path].ts"],
+    entryPoints: ["api/router.ts"],
     format: "cjs",
     outfile: "dist-electron/api-dispatch.cjs",
   }),

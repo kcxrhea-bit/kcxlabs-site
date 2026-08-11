@@ -25,18 +25,57 @@ import archiveRemoveCloudOriginal from "../server/media-api/routes/archive/[id]/
  * Vercel's function discovery no longer counts each one separately; each still ends in the same
  * `export default toNodeHandler(handler)` it always did. This file's only job is picking which
  * one gets the request.
+ *
+ * This project is plain Vite + Vercel Functions, not Next.js: a bracket-named catch-all file
+ * (`api/[...path].ts`) is a Next.js routing convention and is not honored by Vercel's generic
+ * Functions runtime, so a request like `/api/media/check-hash` never actually reached that file —
+ * Vercel returned NOT_FOUND before invoking any function. This file is instead a normal, statically
+ * named function (`api/router.ts`), reached via an explicit rewrite in `vercel.json`:
+ * `/api/:path*` -> `/api/router?__kcx_path=:path*`. See `reconstructOriginalUrl` below for how the
+ * original public URL is restored before any route logic runs.
  */
 
 export type NodeHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 
+const KCX_PATH_QUERY_KEY = "__kcx_path";
+
 /** Mirrors `resolveIncomingUrl` in `_lib/http.ts`: absolute in production, relative under `vercel dev`. */
-function pathnameOf(req: IncomingMessage): string {
+function parseIncomingUrl(req: IncomingMessage): URL {
   const raw = req.url ?? "/";
   try {
-    return new URL(raw).pathname;
+    return new URL(raw);
   } catch {
-    return new URL(raw, `http://${req.headers.host ?? "localhost"}`).pathname;
+    return new URL(raw, `http://${req.headers.host ?? "localhost"}`);
   }
+}
+
+function pathnameOf(req: IncomingMessage): string {
+  return parseIncomingUrl(req).pathname;
+}
+
+/**
+ * Reverses the `/api/:path* -> /api/router?__kcx_path=:path*` rewrite in `vercel.json`, so every
+ * downstream route handler — which all parse `req.url`/`request.url` themselves, never a
+ * Vercel-injected route param — sees exactly the original public URL it always did, e.g.
+ * `/api/media/abc123/restore-authorize?foo=bar`, never `/api/router?__kcx_path=...&foo=bar`.
+ *
+ * Mutates `req.url` in place — same `req` object, only this one string property changes — so
+ * object identity, headers, method, and the (untouched, unread) body stream are unaffected.
+ * `__kcx_path` is deleted before the remaining query string is reserialized, so it never reaches
+ * downstream logic; every other original query parameter is preserved.
+ *
+ * A request with no `__kcx_path` (a direct invocation that bypassed the rewrite — `vercel dev`,
+ * or a test) leaves `req.url` untouched, so `resolveRoute` falls back to reading the path as-is.
+ */
+function reconstructOriginalUrl(req: IncomingMessage): void {
+  const url = parseIncomingUrl(req);
+  const kcxPath = url.searchParams.get(KCX_PATH_QUERY_KEY);
+  if (kcxPath === null) return;
+
+  url.searchParams.delete(KCX_PATH_QUERY_KEY);
+  const query = url.searchParams.toString();
+  const pathname = `/api/${kcxPath.replace(/^\/+/, "")}`;
+  req.url = query ? `${pathname}?${query}` : pathname;
 }
 
 function segmentsOf(pathname: string): string[] {
@@ -78,13 +117,15 @@ export function resolveRoute(pathname: string): NodeHandler | null {
 }
 
 /**
- * The Vercel entrypoint. `req`/`res` are forwarded untouched to the selected route's own
+ * The Vercel entrypoint. `req.url` is first reconstructed back to the original public URL (see
+ * `reconstructOriginalUrl`), then `req`/`res` are forwarded untouched to the selected route's own
  * `toNodeHandler`-wrapped handler, so method handling, auth, body parsing, query strings, and
  * response headers all remain exactly what that route already does on its own — this function
  * never reads the body and only inspects `req.url`/`req.headers.host`, which does not consume
  * the request stream.
  */
 export default async function dispatch(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  reconstructOriginalUrl(req);
   const handler = resolveRoute(pathnameOf(req));
   if (!handler) {
     res.statusCode = 404;

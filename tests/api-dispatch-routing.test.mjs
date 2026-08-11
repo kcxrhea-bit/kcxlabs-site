@@ -1,9 +1,18 @@
 /**
- * Proves the single Vercel Function at `api/[...path].ts` — added so the Media
+ * Proves the single Vercel Function at `api/router.ts` — added so the Media
  * Center API stays under the Hobby plan's 12-function limit — routes every one
  * of the 17 real URLs to its real, unmodified handler, and that the dispatcher
  * itself never touches the request in a way that could drop a query string,
  * a body, an Authorization header, or a dynamic id segment.
+ *
+ * `api/[...path].ts` (a Next.js catch-all naming convention) turned out not to
+ * be honored by Vercel's generic Functions runtime for a plain Vite project:
+ * every request 404'd before reaching the function at all. `api/router.ts` is
+ * reached instead via an explicit `vercel.json` rewrite,
+ * `/api/:path* -> /api/router?__kcx_path=:path*`, so a large block of tests
+ * below exercises that reconstruction specifically — building the same
+ * `?__kcx_path=...` shape Vercel produces and proving the dispatcher restores
+ * the original public URL before any route logic runs.
  *
  * Live dispatch (`dispatch(req, res)`) is exercised for every route whose
  * first gate (`requireMethod` or `requireDevice`) short-circuits before any
@@ -58,13 +67,26 @@ async function run(options) {
   const req = fakeRequest({ headers: { host: HOST }, ...options });
   const res = fakeResponse();
   await dispatch(req, res);
-  return { status: res.statusCode, headers: res.headers, body: res.ended ? bodyOf(res) : null, ended: res.ended };
+  return { status: res.statusCode, headers: res.headers, body: res.ended ? bodyOf(res) : null, ended: res.ended, req };
+}
+
+/**
+ * Builds the exact `?__kcx_path=...` shape Vercel's `/api/:path* -> /api/router?__kcx_path=:path*`
+ * rewrite produces for a given original path (no leading `/api/`, no leading slash) and query
+ * string: `__kcx_path` first, then every original query parameter auto-appended after it — Vercel
+ * appends the incoming request's query parameters that aren't already present in the destination.
+ */
+function rewrittenUrl(originalPathAfterApi, originalQuery = "") {
+  const params = new URLSearchParams();
+  params.set("__kcx_path", originalPathAfterApi);
+  for (const [key, value] of new URLSearchParams(originalQuery)) params.append(key, value);
+  return `/api/router?${params.toString()}`;
 }
 
 // ─── Structural: the dispatcher delegates, it does not reimplement ──────────
 
 test("the dispatcher file only routes; it imports every route module rather than reimplementing logic", () => {
-  const dispatcher = source("api/[...path].ts");
+  const dispatcher = source("api/router.ts");
   assert.match(dispatcher, /export default async function dispatch/);
   assert.match(dispatcher, /export function resolveRoute/);
   // All 17 routes imported from their relocated modules, none re-declared inline.
@@ -78,6 +100,23 @@ test("the dispatcher file only routes; it imports every route module rather than
     assert.match(dispatcher, new RegExp(`from "\\.\\./server/media-api/routes/${specifier.replace(/[[\]]/g, "\\$&")}"`), `missing import for ${specifier}`);
   }
   assert.doesNotMatch(dispatcher, /requireDevice|requireMethod|createDb|presignUpload/, "dispatcher must not reimplement route logic");
+  assert.match(dispatcher, /__kcx_path/, "dispatcher must reverse the vercel.json __kcx_path rewrite");
+});
+
+test("vercel.json rewrites /api/:path* to /api/router before the SPA catch-all, and leaves NEXUS untouched", () => {
+  const vercel = JSON.parse(source("vercel.json"));
+  const rewrites = vercel.rewrites;
+  const apiIndex = rewrites.findIndex((rule) => rule.source === "/api/:path*");
+  const spaIndex = rewrites.findIndex((rule) => rule.destination === "/index.html");
+  const nexusAssetsIndex = rewrites.findIndex((rule) => rule.source === "/nexus/assets/(.*)");
+  assert.notEqual(apiIndex, -1, "the /api/:path* rewrite is missing");
+  assert.equal(rewrites[apiIndex].destination, "/api/router?__kcx_path=:path*");
+  assert.ok(apiIndex < spaIndex, "the /api rewrite must come before the SPA catch-all");
+  assert.notEqual(nexusAssetsIndex, -1, "the /nexus/assets rewrite must be preserved");
+  assert.deepEqual(vercel.redirects, [
+    { source: "/nexus-cloud", destination: "/nexus", permanent: true },
+    { source: "/nexus-cloud/portal", destination: "/nexus/portal", permanent: true },
+  ]);
 });
 
 // ─── Pure routing: every canonical URL resolves to a distinct handler ───────
@@ -234,4 +273,91 @@ test("auth/pair: reached through the real dispatcher, not a hang (no auth gate �
   const { status, ended } = await run({ method: "POST", url: "/api/auth/pair", body: JSON.stringify({}) });
   assert.equal(ended, true);
   assert.equal(status, 400);
+});
+
+// ─── vercel.json rewrite reconstruction: /api/router?__kcx_path=... ─────────
+//
+// Every case below sends the request in the shape Vercel's rewrite actually produces
+// (`rewrittenUrl(...)`), not the direct `/api/...` shape the tests above use, proving the
+// dispatcher's reconstruction — not just its routing table — works end to end.
+
+test("the exact example from the task: /api/media/abc123/restore-authorize?foo=bar reconstructs exactly", NO_HANG, async () => {
+  const req = fakeRequest({
+    method: "POST",
+    url: rewrittenUrl("media/abc123/restore-authorize", "foo=bar"),
+    headers: { host: HOST },
+    body: JSON.stringify({}),
+  });
+  const res = fakeResponse();
+  await dispatch(req, res);
+  assert.equal(req.url, "/api/media/abc123/restore-authorize?foo=bar");
+  assert.equal(res.statusCode, 401); // reaches requireDevice — the reconstructed URL routed correctly.
+});
+
+test("a rewritten static route (auth/pair) reaches the real handler, not a 404", NO_HANG, async () => {
+  const { status } = await run({ method: "POST", url: rewrittenUrl("auth/pair"), body: JSON.stringify({}) });
+  assert.equal(status, 400); // same malformed-body rejection as the direct-URL case.
+});
+
+test("a rewritten dynamic media/<id> route reaches the real handler, not a 404", NO_HANG, async () => {
+  const { status } = await run({ method: "GET", url: rewrittenUrl("media/some-real-id") });
+  assert.equal(status, 401);
+});
+
+test("a rewritten dynamic archive/<id>/start route reaches the real handler, not a 404", NO_HANG, async () => {
+  const { status } = await run({ method: "POST", url: rewrittenUrl("archive/some-real-id/start") });
+  assert.equal(status, 401);
+});
+
+test("original query strings survive the rewrite, and __kcx_path is removed before downstream handling", NO_HANG, async () => {
+  const { status, req } = await run({ method: "GET", url: rewrittenUrl("archive/jobs", "limit=5&offset=10") });
+  assert.equal(status, 401); // not a 404 — the query string alongside __kcx_path did not confuse routing.
+  assert.equal(req.url, "/api/archive/jobs?limit=5&offset=10");
+  assert.ok(!req.url.includes("__kcx_path"), "__kcx_path leaked into the reconstructed URL");
+});
+
+test("a POST body survives the rewrite untouched: a differentiated 400 vs 401 proves the real body was read", NO_HANG, async () => {
+  const malformed = await run({ method: "POST", url: rewrittenUrl("auth/pair"), body: JSON.stringify({}) });
+  assert.equal(malformed.status, 400);
+
+  const wrongCredentials = await run({
+    method: "POST",
+    url: rewrittenUrl("auth/pair"),
+    body: JSON.stringify({ email: "not-the-owner@example.test", password: "x", deviceName: "probe" }),
+  });
+  assert.equal(wrongCredentials.status, 401);
+  assert.deepEqual(JSON.parse(wrongCredentials.body), { error: "invalid_credentials" });
+});
+
+test("the Authorization header survives the rewrite untouched", NO_HANG, async () => {
+  const missing = await run({
+    method: "POST",
+    url: rewrittenUrl("media/check-hash"),
+    body: JSON.stringify({ sha256: "a".repeat(64) }),
+  });
+  assert.equal(missing.status, 401);
+  assert.deepEqual(JSON.parse(missing.body), { error: "unauthorized" });
+
+  // Same technique as the direct-URL Authorization test: a present token clears the null-token
+  // short-circuit and reaches the device-token DB lookup, which fails fast against this synthetic,
+  // unreachable database — proving the header value reached the real handler through the rewrite.
+  const present = await run({
+    method: "POST",
+    url: rewrittenUrl("media/check-hash"),
+    headers: { host: HOST, authorization: "Bearer some-fake-token" },
+    body: JSON.stringify({ sha256: "a".repeat(64) }),
+  });
+  assert.equal(present.status, 500);
+  assert.deepEqual(JSON.parse(present.body), { error: "internal_error" });
+});
+
+test("an unknown route still 404s when sent in the rewritten shape", NO_HANG, async () => {
+  const { status, body } = await run({ method: "GET", url: rewrittenUrl("does-not-exist") });
+  assert.equal(status, 404);
+  assert.deepEqual(JSON.parse(body), { error: "not_found" });
+});
+
+test("a direct invocation with no __kcx_path (vercel dev, or bypassing the rewrite) leaves req.url untouched", NO_HANG, async () => {
+  const { req } = await run({ method: "GET", url: "/api/archive/jobs" });
+  assert.equal(req.url, "/api/archive/jobs");
 });

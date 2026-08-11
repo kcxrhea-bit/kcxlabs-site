@@ -23,7 +23,7 @@ const HASH = "a".repeat(64);
 
 /**
  * Every `.ts` file under `server/media-api/routes/` is a route the single
- * Vercel Function at `api/[...path].ts` dispatches to. Discovered from disk
+ * Vercel Function at `api/router.ts` dispatches to. Discovered from disk
  * rather than hardcoded so a new route file shows up in the coverage check
  * below without anyone remembering to add it to a list.
  *
@@ -65,7 +65,7 @@ test("the api directory holds only the single dispatcher function (Vercel Hobby'
     }
   };
   walk(apiRoot, "");
-  assert.deepEqual(functionFiles, ["[...path].ts"]);
+  assert.deepEqual(functionFiles, ["router.ts"]);
 });
 
 // Every route is wrapped in `toNodeHandler` so `vercel dev` (which never
