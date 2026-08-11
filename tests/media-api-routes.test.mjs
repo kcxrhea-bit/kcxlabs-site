@@ -173,3 +173,31 @@ test("public enumeration includes PUBLIC and excludes UNLISTED and PRIVATE", () 
   assert.match(source("api/_lib/db.ts"), /WHERE visibility = 'public' AND status = 'active'/);
   assert.match(source("api/clips.ts"), /listPublic/);
 });
+
+test("archive download authorization is owner-authenticated, state-bound, and narrow", () => {
+  const route = source("api/archive/[id]/download-authorize.ts");
+  assert.match(route, /requireDevice\(request\)/);
+  assert.match(route, /archiveState !== "archive_downloading"/);
+  assert.match(route, /!item\.originalOnline/);
+  assert.match(route, /presignDownload/);
+  assert.doesNotMatch(route, /R2_SECRET_ACCESS_KEY|R2_ACCESS_KEY_ID/);
+});
+
+test("cloud removal keeps mayDeleteFromCloud authoritative and has a recoverable pending state", () => {
+  const route = source("api/archive/[id]/remove-cloud-original.ts");
+  assert.match(route, /mayDeleteFromCloud\(toRetentionInput\(item\)\)/);
+  assert.match(route, /archived_local/);
+  assert.match(route, /cloud_delete_pending/);
+  assert.match(route, /deleteObject/);
+  assert.match(route, /markOriginalOffline/);
+  assert.match(route, /archived_offline[\s\S]*idempotent: true/);
+});
+
+test("public share lookup permits PUBLIC and UNLISTED but hides PRIVATE and offline originals", () => {
+  const route = source("api/media/public/[publicId].ts");
+  assert.match(route, /item\.visibility === "private"/);
+  assert.match(route, /item\.originalOnline \? await presignDownload/);
+  assert.match(route, /deliveryUrl = .*: null/);
+  assert.match(route, /toPublicMediaItem/);
+  assert.doesNotMatch(route, /storageObjectKey.*json|ownerId.*json/);
+});
