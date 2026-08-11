@@ -1,0 +1,32 @@
+import { deviceTokenExpiry, hashDeviceToken, verifyPassword } from "../_lib/auth";
+import { generateDeviceToken, generateDeviceTokenId } from "../_lib/ids";
+import { authRepository, createDb } from "../_lib/db";
+import { loadAppConfig } from "../_lib/config";
+import { internalError, json, readJson, requireMethod } from "../_lib/http";
+
+export default async function handler(request: Request): Promise<Response> {
+  const methodError = requireMethod(request, "POST");
+  if (methodError) return methodError;
+  const body = await readJson(request);
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body?.password === "string" ? body.password : "";
+  const deviceName = typeof body?.deviceName === "string" ? body.deviceName.trim().slice(0, 120) : "";
+  if (!email || !password || !deviceName) return json(400, { error: "invalid_request" });
+
+  const config = loadAppConfig();
+  if (email !== config.auth.ownerEmail.toLowerCase() || !(await verifyPassword(password, config.auth.ownerPasswordHash))) {
+    return json(401, { error: "invalid_credentials" });
+  }
+
+  try {
+    const auth = authRepository(createDb(config.database));
+    const ownerId = "owner_kcx";
+    await auth.ensureOwner({ id: ownerId, email: config.auth.ownerEmail, passwordHash: config.auth.ownerPasswordHash });
+    const token = generateDeviceToken();
+    const expiresAt = deviceTokenExpiry(new Date());
+    await auth.createDeviceToken({ id: generateDeviceTokenId(), ownerId, tokenHash: hashDeviceToken(token), deviceName, expiresAt });
+    return json(201, { token, expiresAt });
+  } catch (error) {
+    return internalError(error, config);
+  }
+}

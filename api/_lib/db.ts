@@ -371,27 +371,31 @@ export function archiveRepository(db: Db) {
       sha256: string;
       publicId: string;
     }): Promise<MediaItem | null> {
-      await db`
-        INSERT INTO archive_manifest (media_id, public_id, local_path, size_bytes, sha256, verified_at)
-        VALUES (${input.id}, ${input.publicId}, ${input.localPath}, ${input.sizeBytes},
-                ${input.sha256.toLowerCase()}, now())
-        ON CONFLICT (media_id) DO UPDATE SET
-          local_path = EXCLUDED.local_path,
-          size_bytes = EXCLUDED.size_bytes,
-          sha256 = EXCLUDED.sha256,
-          verified_at = now()
-      `;
-
       const rows = await db`
-        UPDATE media SET
-          local_archive_verified = TRUE,
-          local_archive_path = ${input.localPath},
-          archived_at = COALESCE(archived_at, now()),
-          archive_state = 'archived_local'::archive_state,
-          updated_at = now()
-        WHERE id = ${input.id} AND owner_id = ${input.ownerId}
-          AND archive_state = 'archive_downloading'::archive_state
-        RETURNING *
+        WITH updated AS (
+          UPDATE media SET
+            local_archive_verified = TRUE,
+            local_archive_path = ${input.localPath},
+            archived_at = COALESCE(archived_at, now()),
+            archive_state = 'archived_local'::archive_state,
+            updated_at = now()
+          WHERE id = ${input.id} AND owner_id = ${input.ownerId}
+            AND archive_state = 'archive_downloading'::archive_state
+          RETURNING *
+        ), manifest AS (
+          INSERT INTO archive_manifest (media_id, public_id, local_path, size_bytes, sha256, verified_at)
+          SELECT id, public_id, ${input.localPath}, ${input.sizeBytes},
+                 ${input.sha256.toLowerCase()}, now()
+          FROM updated
+          ON CONFLICT (media_id) DO UPDATE SET
+            local_path = EXCLUDED.local_path,
+            size_bytes = EXCLUDED.size_bytes,
+            sha256 = EXCLUDED.sha256,
+            verified_at = now()
+          RETURNING media_id
+        )
+        SELECT updated.* FROM updated
+        INNER JOIN manifest ON manifest.media_id = updated.id
       `;
       return rows.length === 0 ? null : mapMediaRow(rows[0]);
     },

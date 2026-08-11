@@ -64,6 +64,7 @@ export function r2Context(config: R2Config): R2Context {
 export type ObjectHead = {
   exists: boolean;
   sizeBytes: number | null;
+  sha256: string | null;
   etag: string | null;
   contentType: string | null;
   lastModified: string | null;
@@ -81,6 +82,7 @@ export async function headObject(context: R2Context, key: string): Promise<Objec
     return {
       exists: true,
       sizeBytes: typeof response.ContentLength === "number" ? response.ContentLength : null,
+      sha256: response.Metadata?.sha256?.toLowerCase() ?? null,
       etag: response.ETag ?? null,
       contentType: response.ContentType ?? null,
       lastModified: response.LastModified?.toISOString() ?? null,
@@ -89,7 +91,7 @@ export async function headObject(context: R2Context, key: string): Promise<Objec
     const status = (error as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
     const name = (error as { name?: string })?.name;
     if (status === 404 || name === "NotFound" || name === "NoSuchKey") {
-      return { exists: false, sizeBytes: null, etag: null, contentType: null, lastModified: null };
+      return { exists: false, sizeBytes: null, sha256: null, etag: null, contentType: null, lastModified: null };
     }
     throw error;
   }
@@ -116,16 +118,20 @@ export type PresignedUpload = {
  */
 export async function presignUpload(
   context: R2Context,
-  input: { key: string; contentType: string; sizeBytes: number },
+  input: { key: string; contentType: string; sizeBytes: number; sha256?: string },
 ): Promise<PresignedUpload> {
   const command = new PutObjectCommand({
     Bucket: context.bucket,
     Key: input.key,
     ContentType: input.contentType,
     ContentLength: input.sizeBytes,
+    ...(input.sha256 ? { Metadata: { sha256: input.sha256.toLowerCase() } } : {}),
   });
 
-  const url = await getSignedUrl(context.client, command, { expiresIn: PRESIGN_TTL_SECONDS });
+  const url = await getSignedUrl(context.client, command, {
+    expiresIn: PRESIGN_TTL_SECONDS,
+    ...(input.sha256 ? { unhoistableHeaders: new Set(["x-amz-meta-sha256"]) } : {}),
+  });
 
   return {
     url,
@@ -133,6 +139,7 @@ export async function presignUpload(
     headers: {
       "Content-Type": input.contentType,
       "Content-Length": String(input.sizeBytes),
+      ...(input.sha256 ? { "x-amz-meta-sha256": input.sha256.toLowerCase() } : {}),
     },
     key: input.key,
     expiresInSeconds: PRESIGN_TTL_SECONDS,

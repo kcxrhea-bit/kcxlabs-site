@@ -172,18 +172,16 @@ for (const expected of [
 let constraintEnforced = false;
 let constraintDetail = "not tested";
 try {
-  await sql.query(`
-    BEGIN;
-    INSERT INTO owners (id, email, password_hash) VALUES ('__verify__', '__verify__@test.invalid', 'scrypt$x');
-    INSERT INTO media (
+  await sql.transaction([
+    sql.query("INSERT INTO owners (id, email, password_hash) VALUES ('__verify__', '__verify__@test.invalid', 'scrypt$x')"),
+    sql.query(`INSERT INTO media (
       id, public_id, owner_id, original_filename, mime_type, size_bytes, sha256,
       storage_object_key, status, archive_state, original_online, local_archive_verified
     ) VALUES (
       '__verify__', '__verify__', '__verify__', 'x.mp4', 'video/mp4', 1,
       '${"a".repeat(64)}', 'media/x', 'active', 'archived_offline', false, false
-    );
-    ROLLBACK;
-  `);
+    )`),
+  ]);
   constraintDetail = "NOT ENFORCED — an unverified archived row was accepted";
 } catch (error) {
   const message = String(error?.message ?? "");
@@ -192,11 +190,6 @@ try {
     constraintDetail = "rejected an archived row with no verified local copy";
   } else {
     constraintDetail = `unexpected error: ${message}`;
-  }
-  try {
-    await sql.query("ROLLBACK;");
-  } catch {
-    // The failed batch already aborted; nothing to clean up.
   }
 }
 check("deletion safety constraint actually rejects unsafe rows", constraintEnforced, constraintDetail);

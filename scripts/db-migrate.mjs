@@ -17,6 +17,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadEnvLocal } from "./load-env.mjs";
+import { splitSqlStatements, withoutTransactionControls } from "./sql-statements.mjs";
 
 loadEnvLocal();
 
@@ -80,12 +81,15 @@ for (const file of files) {
     continue;
   }
 
-  const statement = readFileSync(join(migrationsDir, file), "utf8");
+  const source = readFileSync(join(migrationsDir, file), "utf8");
+  const statements = withoutTransactionControls(splitSqlStatements(source));
   process.stdout.write(`  applying ${version} ... `);
 
   try {
-    // The file supplies its own BEGIN/COMMIT, so a failure rolls back cleanly.
-    await sql.query(statement);
+    // Neon HTTP accepts one prepared statement per query. Submit all migration
+    // statements as its documented atomic batch instead; the SQL file's own
+    // BEGIN/COMMIT controls are omitted because this call owns the transaction.
+    await sql.transaction(statements.map((statement) => sql.query(statement)));
     console.log("done");
     appliedCount += 1;
   } catch (error) {
