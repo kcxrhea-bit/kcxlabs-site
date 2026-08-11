@@ -1,8 +1,8 @@
 /** Server-only HTTP primitives shared by every Media API handler. */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { bearerToken, hashDeviceToken, verifyDeviceTokenRecord } from "./auth";
-import { authRepository, createDb } from "./db";
-import { loadAppConfig, redactSecrets, type AppConfig } from "./config";
+import { bearerToken, hashDeviceToken, verifyDeviceTokenRecord } from "./auth.js";
+import { authRepository, createDb } from "./db.js";
+import { loadAppConfig, redactSecrets, type AppConfig } from "./config.js";
 
 export type ApiContext = { config: AppConfig; ownerId: string };
 

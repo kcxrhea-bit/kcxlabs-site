@@ -43,7 +43,7 @@
  * Normal 7 GB / 8 GB behaviour is completely unchanged while metrics are fresh.
  */
 
-import type { ArchiveState, MediaRecordStatus } from "./types";
+import type { ArchiveState, MediaRecordStatus } from "./types.js";
 
 const GB = 1024 * 1024 * 1024;
 

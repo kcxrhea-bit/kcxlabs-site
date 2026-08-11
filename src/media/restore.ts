@@ -14,9 +14,9 @@
  * central promise of the two-tier design: a link you sent someone keeps working.
  */
 
-import type { ArchiveState } from "./types";
-import { canTransitionArchiveState } from "./types";
-import type { StorageBudget } from "./storage-budget";
+import type { ArchiveState } from "./types.js";
+import { canTransitionArchiveState } from "./types.js";
+import type { StorageBudget } from "./storage-budget.js";
 
 // ─── Local archive manifest ──────────────────────────────────────────────────
 

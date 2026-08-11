@@ -1,22 +1,22 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import pair from "../server/media-api/routes/auth/pair";
-import revoke from "../server/media-api/routes/auth/revoke";
-import clips from "../server/media-api/routes/clips";
-import mediaIndex from "../server/media-api/routes/media/index";
-import checkHash from "../server/media-api/routes/media/check-hash";
-import uploadAuthorize from "../server/media-api/routes/media/upload-authorize";
-import finalize from "../server/media-api/routes/media/finalize";
-import mediaItem from "../server/media-api/routes/media/[id]";
-import mediaPublic from "../server/media-api/routes/media/public/[publicId]";
-import restoreAuthorize from "../server/media-api/routes/media/[id]/restore-authorize";
-import restoreFinalize from "../server/media-api/routes/media/[id]/restore-finalize";
-import archiveJobs from "../server/media-api/routes/archive/jobs";
-import archiveStart from "../server/media-api/routes/archive/[id]/start";
-import archiveComplete from "../server/media-api/routes/archive/[id]/complete";
-import archiveFail from "../server/media-api/routes/archive/[id]/fail";
-import archiveDownloadAuthorize from "../server/media-api/routes/archive/[id]/download-authorize";
-import archiveRemoveCloudOriginal from "../server/media-api/routes/archive/[id]/remove-cloud-original";
+import pair from "../server/media-api/routes/auth/pair.js";
+import revoke from "../server/media-api/routes/auth/revoke.js";
+import clips from "../server/media-api/routes/clips.js";
+import mediaIndex from "../server/media-api/routes/media/index.js";
+import checkHash from "../server/media-api/routes/media/check-hash.js";
+import uploadAuthorize from "../server/media-api/routes/media/upload-authorize.js";
+import finalize from "../server/media-api/routes/media/finalize.js";
+import mediaItem from "../server/media-api/routes/media/[id].js";
+import mediaPublic from "../server/media-api/routes/media/public/[publicId].js";
+import restoreAuthorize from "../server/media-api/routes/media/[id]/restore-authorize.js";
+import restoreFinalize from "../server/media-api/routes/media/[id]/restore-finalize.js";
+import archiveJobs from "../server/media-api/routes/archive/jobs.js";
+import archiveStart from "../server/media-api/routes/archive/[id]/start.js";
+import archiveComplete from "../server/media-api/routes/archive/[id]/complete.js";
+import archiveFail from "../server/media-api/routes/archive/[id]/fail.js";
+import archiveDownloadAuthorize from "../server/media-api/routes/archive/[id]/download-authorize.js";
+import archiveRemoveCloudOriginal from "../server/media-api/routes/archive/[id]/remove-cloud-original.js";
 
 /**
  * Single Vercel Function fronting the entire Media Center API, to stay under the Hobby plan's

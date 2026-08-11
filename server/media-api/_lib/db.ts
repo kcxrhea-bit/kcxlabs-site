@@ -15,14 +15,14 @@
  */
 
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
-import type { DatabaseConfig } from "./config";
+import type { DatabaseConfig } from "./config.js";
 import type {
   ArchiveState,
   MediaItem,
   MediaKind,
   MediaRecordStatus,
   MediaVisibility,
-} from "../../../src/media/types";
+} from "../../../src/media/types.js";
 
 export type Db = NeonQueryFunction<false, false>;
 

@@ -1,6 +1,6 @@
-import { createDb, mediaRepository } from "../../../_lib/db";
-import { internalError, isResponse, json, requestUrl, requireDevice, requireMethod, toNodeHandler } from "../../../_lib/http";
-import { presignDownload, r2Context } from "../../../_lib/r2";
+import { createDb, mediaRepository } from "../../../_lib/db.js";
+import { internalError, isResponse, json, requestUrl, requireDevice, requireMethod, toNodeHandler } from "../../../_lib/http.js";
+import { presignDownload, r2Context } from "../../../_lib/r2.js";
 
 /** Narrow desktop-only authorization to copy an original into the local archive. */
 async function handler(request: Request): Promise<Response> {

@@ -97,7 +97,9 @@ test("the dispatcher file only routes; it imports every route module rather than
     "archive/[id]/start", "archive/[id]/complete", "archive/[id]/fail",
     "archive/[id]/download-authorize", "archive/[id]/remove-cloud-original",
   ]) {
-    assert.match(dispatcher, new RegExp(`from "\\.\\./server/media-api/routes/${specifier.replace(/[[\]]/g, "\\$&")}"`), `missing import for ${specifier}`);
+    // ".js" is required on the specifier for native Node ESM (Vercel runs this as a real ES
+    // module, not bundled) even though the actual source file is .ts.
+    assert.match(dispatcher, new RegExp(`from "\\.\\./server/media-api/routes/${specifier.replace(/[[\]]/g, "\\$&")}\\.js"`), `missing import for ${specifier}`);
   }
   assert.doesNotMatch(dispatcher, /requireDevice|requireMethod|createDb|presignUpload/, "dispatcher must not reimplement route logic");
   assert.match(dispatcher, /__kcx_path/, "dispatcher must reverse the vercel.json __kcx_path rewrite");

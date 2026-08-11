@@ -25,7 +25,7 @@ import {
   AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { R2Config } from "./config";
+import type { R2Config } from "./config.js";
 
 /**
  * R2 requires region "auto". The S3 SDK insists on a region being set, and any

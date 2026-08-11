@@ -12,9 +12,9 @@
  * paused uploads — never a shortcut.
  */
 
-import type { ArchiveState, MediaVisibility } from "./types";
-import { isArchiveInFlight, isOriginalOffline } from "./types";
-import { isArchiveEligible, type RetentionInput } from "./retention";
+import type { ArchiveState, MediaVisibility } from "./types.js";
+import { isArchiveInFlight, isOriginalOffline } from "./types.js";
+import { isArchiveEligible, type RetentionInput } from "./retention.js";
 
 /** Everything candidate selection needs to know about one item. */
 export type ArchiveCandidateInput = {

@@ -20,8 +20,8 @@
  * never to a crash and never to permissiveness.
  */
 
-import type { AnalyticsConfig } from "./config";
-import type { ProviderMetrics } from "../../../src/media/storage-budget";
+import type { AnalyticsConfig } from "./config.js";
+import type { ProviderMetrics } from "../../../src/media/storage-budget.js";
 
 const GRAPHQL_ENDPOINT = "https://api.cloudflare.com/client/v4/graphql";
 

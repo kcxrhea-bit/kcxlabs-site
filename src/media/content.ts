@@ -11,7 +11,7 @@
  * whenever the two disagree.
  */
 
-import type { MediaKind } from "./types";
+import type { MediaKind } from "./types.js";
 
 // ─── Extension → type mapping ────────────────────────────────────────────────
 

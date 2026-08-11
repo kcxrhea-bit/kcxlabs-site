@@ -80,7 +80,8 @@ test("every API route is wrapped for local `vercel dev` compatibility with its r
     assert.match(route, /export default toNodeHandler\(handler\);/, `${path}: default export is not toNodeHandler(handler)`);
     assert.doesNotMatch(route, /export default async function handler/, `${path}: still exports a bare Fetch handler`);
     // One adapter, reused — not a per-route reimplementation of the same wrapping logic.
-    assert.match(route, /from ["'](\.\/|(\.\.\/)+)_lib\/http["']/, `${path}: toNodeHandler must come from the shared _lib/http, not a local copy`);
+    // ".js" is required on the specifier for native Node ESM even though the source is .ts.
+    assert.match(route, /from ["'](\.\/|(\.\.\/)+)_lib\/http\.js["']/, `${path}: toNodeHandler must come from the shared _lib/http, not a local copy`);
   }
 });
 

@@ -1,6 +1,6 @@
-import { createDb, mediaRepository } from "../../_lib/db";
-import { internalError, isResponse, json, readJson, requestUrl, requireDevice, toNodeHandler } from "../../_lib/http";
-import { normalizeRetentionDays, type MediaVisibility } from "../../../../src/media/types";
+import { createDb, mediaRepository } from "../../_lib/db.js";
+import { internalError, isResponse, json, readJson, requestUrl, requireDevice, toNodeHandler } from "../../_lib/http.js";
+import { normalizeRetentionDays, type MediaVisibility } from "../../../../src/media/types.js";
 
 const mutable = new Set(["title","description","tags","game","eventType","visibility","retentionDays","keepOnline","favorite","featured"]);
 async function handler(request: Request): Promise<Response> {

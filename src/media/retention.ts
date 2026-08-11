@@ -16,7 +16,7 @@
  * cloud — indefinitely. There is no timeout that overrides this.
  */
 
-import type { ArchiveState, MediaItem, MediaVisibility } from "./types";
+import type { ArchiveState, MediaItem, MediaVisibility } from "./types.js";
 
 const MS_PER_DAY = 86_400_000;
 

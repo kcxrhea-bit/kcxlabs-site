@@ -1,11 +1,11 @@
-import { createDb, mediaRepository } from "../../_lib/db";
-import { currentStorageBudget } from "../../_lib/budget";
-import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http";
-import { generateMediaId, generatePublicId } from "../../_lib/ids";
-import { presignUpload, r2Context } from "../../_lib/r2";
-import { resolveContentType, validateUploadRequest } from "../../../../src/media/content";
-import { buildStorageKey, extractExtension, parseClipFilename, suggestTitle } from "../../../../src/media/filenames";
-import { defaultMediaVisibility, mediaVisibilityValues, normalizeRetentionDays, type MediaVisibility } from "../../../../src/media/types";
+import { createDb, mediaRepository } from "../../_lib/db.js";
+import { currentStorageBudget } from "../../_lib/budget.js";
+import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http.js";
+import { generateMediaId, generatePublicId } from "../../_lib/ids.js";
+import { presignUpload, r2Context } from "../../_lib/r2.js";
+import { resolveContentType, validateUploadRequest } from "../../../../src/media/content.js";
+import { buildStorageKey, extractExtension, parseClipFilename, suggestTitle } from "../../../../src/media/filenames.js";
+import { defaultMediaVisibility, mediaVisibilityValues, normalizeRetentionDays, type MediaVisibility } from "../../../../src/media/types.js";
 
 async function handler(request: Request): Promise<Response> {
   const method=requireMethod(request,"POST");if(method)return method;const context=await requireDevice(request);if(isResponse(context))return context;const body=await readJson(request);

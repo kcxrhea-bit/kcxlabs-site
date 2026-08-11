@@ -9,6 +9,6 @@
  * verified by the integration script rather than by unit tests.
  */
 
-export * from "./config";
-export * from "./auth";
-export * from "./ids";
+export * from "./config.js";
+export * from "./auth.js";
+export * from "./ids.js";
