@@ -1,13 +1,13 @@
 import { createDb, mediaRepository } from "../../_lib/db";
-import { internalError, json, requireMethod } from "../../_lib/http";
+import { internalError, json, requestUrl, requireMethod, toNodeHandler } from "../../_lib/http";
 import { presignDownload, r2Context } from "../../_lib/r2";
 import { contentDispositionFor } from "../../../src/media/content";
 import { resolveSharePageMode, toPublicMediaItem } from "../../../src/media/types";
 
 /** Public share lookup: PUBLIC and direct-link UNLISTED only; PRIVATE is indistinguishable from missing. */
-export default async function handler(request: Request): Promise<Response> {
+async function handler(request: Request): Promise<Response> {
   const method = requireMethod(request, "GET"); if (method) return method;
-  const publicId = new URL(request.url).pathname.split("/").pop() ?? "";
+  const publicId = requestUrl(request).pathname.split("/").pop() ?? "";
   try {
     const config = (await import("../../_lib/config")).loadAppConfig();
     const item = await mediaRepository(createDb(config.database)).byPublicId(publicId);
@@ -18,3 +18,5 @@ export default async function handler(request: Request): Promise<Response> {
     return json(200, { media: toPublicMediaItem(item), mode: resolveSharePageMode(toPublicMediaItem(item)), deliveryUrl, thumbnailUrl, expiresInSeconds: 15 * 60 }, { "Cache-Control": "private, max-age=0" });
   } catch (error) { return internalError(error, (await import("../../_lib/config")).loadAppConfig()); }
 }
+
+export default toNodeHandler(handler);

@@ -2,9 +2,9 @@ import { deviceTokenExpiry, hashDeviceToken, verifyPassword } from "../_lib/auth
 import { generateDeviceToken, generateDeviceTokenId } from "../_lib/ids";
 import { authRepository, createDb } from "../_lib/db";
 import { loadAppConfig } from "../_lib/config";
-import { internalError, json, readJson, requireMethod } from "../_lib/http";
+import { internalError, json, readJson, requireMethod, toNodeHandler } from "../_lib/http";
 
-export default async function handler(request: Request): Promise<Response> {
+async function handler(request: Request): Promise<Response> {
   const methodError = requireMethod(request, "POST");
   if (methodError) return methodError;
   const body = await readJson(request);
@@ -30,3 +30,5 @@ export default async function handler(request: Request): Promise<Response> {
     return internalError(error, config);
   }
 }
+
+export default toNodeHandler(handler);

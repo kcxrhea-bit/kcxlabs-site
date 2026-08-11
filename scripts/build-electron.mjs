@@ -33,18 +33,6 @@ await Promise.all([
     format: "cjs",
     outfile: "dist-electron/platform-service.cjs",
   }),
-  build({
-    ...shared,
-    entryPoints: ["electron/website-addition-service.ts"],
-    format: "cjs",
-    outfile: "dist-electron/website-addition-service.cjs",
-  }),
-  build({
-    ...shared,
-    entryPoints: ["electron/git-publishing-service.ts"],
-    format: "cjs",
-    outfile: "dist-electron/git-publishing-service.cjs",
-  }),
   // Isomorphic media core (types, retention, filename safety, content rules).
   // Bundled here so the node:test suites can import the same compiled logic the
   // API and the Electron media services use, rather than a re-implementation.
@@ -61,5 +49,37 @@ await Promise.all([
     entryPoints: ["api/_lib/index.ts"],
     format: "cjs",
     outfile: "dist-electron/api-core.cjs",
+  }),
+  // Shared HTTP layer, including the local `vercel dev` compatibility
+  // adapter (`toNodeHandler`). Separate from api-core.cjs because it pulls in
+  // db.ts (and so the Neon driver) — api-core.cjs stays dependency-free by
+  // design; this bundle exists so the adapter test exercises the same
+  // compiled code the route handlers actually import.
+  build({
+    ...shared,
+    entryPoints: ["api/_lib/http.ts"],
+    format: "cjs",
+    outfile: "dist-electron/api-http.cjs",
+  }),
+  // A handful of real routes, bundled as-is (their actual `toNodeHandler`
+  // export, not a reimplementation), so the adapter test can invoke them
+  // with an unauthenticated/malformed request and prove they return through
+  // the adapter rather than hang — without ever needing live Neon/R2
+  // credentials, since every one of these short-circuits (400/401) before
+  // touching either.
+  build({
+    ...shared,
+    entryPoints: [
+      "api/auth/pair.ts",
+      "api/auth/revoke.ts",
+      "api/media/check-hash.ts",
+      "api/media/upload-authorize.ts",
+      "api/media/finalize.ts",
+      "api/archive/jobs.ts",
+    ],
+    format: "cjs",
+    outdir: "dist-electron/routes",
+    outbase: "api",
+    outExtension: { ".js": ".cjs" },
   }),
 ]);

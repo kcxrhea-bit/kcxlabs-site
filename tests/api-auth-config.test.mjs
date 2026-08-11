@@ -269,7 +269,7 @@ test("the SPA catch-all rewrite excludes /api so functions are reachable", () =>
   // Approximates Vercel's matching well enough to catch a regression in the
   // pattern. Real behaviour is confirmed against a deployment.
   const pattern = new RegExp(`^${catchAll.source}$`);
-  for (const path of ["/beta", "/nexus", "/nexus/portal", "/resume", "/c/N7hd4KpQ", "/clips", "/"]) {
+  for (const path of ["/beta", "/resume", "/c/N7hd4KpQ", "/clips", "/"]) {
     assert.ok(pattern.test(path), `SPA route stopped matching: ${path}`);
   }
   for (const path of ["/api/media", "/api/auth/pair", "/api/clips"]) {

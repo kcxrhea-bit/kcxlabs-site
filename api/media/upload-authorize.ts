@@ -1,13 +1,13 @@
 import { createDb, mediaRepository } from "../_lib/db";
 import { currentStorageBudget } from "../_lib/budget";
-import { internalError, isResponse, json, readJson, requireDevice, requireMethod } from "../_lib/http";
+import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../_lib/http";
 import { generateMediaId, generatePublicId } from "../_lib/ids";
 import { presignUpload, r2Context } from "../_lib/r2";
 import { resolveContentType, validateUploadRequest } from "../../src/media/content";
 import { buildStorageKey, extractExtension, parseClipFilename, suggestTitle } from "../../src/media/filenames";
 import { defaultMediaVisibility, mediaVisibilityValues, normalizeRetentionDays, type MediaVisibility } from "../../src/media/types";
 
-export default async function handler(request: Request): Promise<Response> {
+async function handler(request: Request): Promise<Response> {
   const method=requireMethod(request,"POST");if(method)return method;const context=await requireDevice(request);if(isResponse(context))return context;const body=await readJson(request);
   const filename=typeof body?.filename==="string"?body.filename:"";const sizeBytes=typeof body?.sizeBytes==="number"?body.sizeBytes:NaN;const sha256=typeof body?.sha256==="string"?body.sha256.toLowerCase():"";
   const validation=validateUploadRequest({filename,sizeBytes,sha256,maxUploadBytes:context.config.limits.maxUploadBytes});if(!validation.ok)return json(400,{error:"invalid_request",reason:validation.reason});
@@ -19,3 +19,5 @@ export default async function handler(request: Request): Promise<Response> {
     return json(201,{duplicate:false,mediaId:item.id,publicId:item.publicId,authorization,budget:{status:budget.status,warning:budget.manualUploadWarning}});
   }catch(error){return internalError(error,context.config);}
 }
+
+export default toNodeHandler(handler);

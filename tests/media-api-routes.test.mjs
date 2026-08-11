@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   verifyDeviceTokenRecord,
@@ -20,22 +21,47 @@ const MB = 1024 * 1024;
 const NOW = new Date("2026-08-10T12:00:00.000Z");
 const HASH = "a".repeat(64);
 
-test("every requested media endpoint has a concrete handler", () => {
-  for (const path of [
-    "api/media/check-hash.ts",
-    "api/media/upload-authorize.ts",
-    "api/media/finalize.ts",
-    "api/media/index.ts",
-    "api/media/[id].ts",
-    "api/clips.ts",
-    "api/archive/jobs.ts",
-    "api/archive/[id]/start.ts",
-    "api/archive/[id]/complete.ts",
-    "api/archive/[id]/fail.ts",
-    "api/media/[id]/restore-authorize.ts",
-    "api/media/[id]/restore-finalize.ts",
-  ]) {
-    assert.match(source(path), /export default async function handler/);
+/**
+ * Every `.ts` file directly under `api/` that isn't `_lib` is a route Vercel
+ * serves. Discovered from disk rather than hardcoded so a new route file
+ * shows up in the coverage check below without anyone remembering to add it
+ * to a list.
+ */
+function discoverRouteFiles(dir = "api") {
+  const root = fileURLToPath(new URL(`../${dir}/`, import.meta.url));
+  const routes = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === "_lib") continue;
+    const relative = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) routes.push(...discoverRouteFiles(relative));
+    else if (entry.name.endsWith(".ts")) routes.push(relative);
+  }
+  return routes;
+}
+
+const routeFiles = discoverRouteFiles();
+
+test("every API route file is discovered (guards the coverage check below against a silently-skipped route)", () => {
+  // Bumping this number is fine when a route is genuinely added or removed —
+  // it exists so a route silently missing from `routeFiles` (e.g. a typo in
+  // discoverRouteFiles's traversal) fails loudly instead of the coverage
+  // test below just quietly checking fewer files than it should.
+  assert.equal(routeFiles.length, 17);
+});
+
+// Every route is wrapped in `toNodeHandler` so `vercel dev` (which never
+// resolves a bare Fetch-style export locally — see the note in
+// api/_lib/http.ts) can execute it. The Fetch handler itself, `handler`, is
+// still the one and only place each route's logic lives — the wrapper only
+// adapts how it is invoked and how its response is written back.
+test("every API route is wrapped for local `vercel dev` compatibility with its real logic in one Fetch handler", () => {
+  for (const path of routeFiles) {
+    const route = source(path);
+    assert.match(route, /async function handler\(request/, `${path}: missing a Fetch-style handler function`);
+    assert.match(route, /export default toNodeHandler\(handler\);/, `${path}: default export is not toNodeHandler(handler)`);
+    assert.doesNotMatch(route, /export default async function handler/, `${path}: still exports a bare Fetch handler`);
+    // One adapter, reused — not a per-route reimplementation of the same wrapping logic.
+    assert.match(route, /from ["'](\.\/|(\.\.\/)+)_lib\/http["']/, `${path}: toNodeHandler must come from the shared _lib/http, not a local copy`);
   }
 });
 

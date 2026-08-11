@@ -1,5 +1,6 @@
 import { AppShell } from "./components/layout/AppShell";
 import { BetaPage } from "./components/pages/BetaPage";
+import { ClipsPage, SharePage } from "./components/pages/MediaPublicPages";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
 import { EcosystemSection } from "./components/sections/EcosystemSection";
@@ -28,6 +29,10 @@ export default function App() {
         <NexusCloudPage />
       ) : route === "nexus-portal" ? (
         <NexusCloudPortalPage />
+      ) : route === "clips" ? (
+        <ClipsPage />
+      ) : route === "share" ? (
+        <SharePage />
       ) : (
         <>
           <HeroSection />

@@ -1,7 +1,7 @@
 import { createDb, mediaRepository } from "../_lib/db";
-import { internalError, isResponse, json, readJson, requireDevice, requireMethod } from "../_lib/http";
+import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../_lib/http";
 
-export default async function handler(request: Request): Promise<Response> {
+async function handler(request: Request): Promise<Response> {
   const method = requireMethod(request, "POST"); if (method) return method;
   const context = await requireDevice(request); if (isResponse(context)) return context;
   const body = await readJson(request);
@@ -12,3 +12,5 @@ export default async function handler(request: Request): Promise<Response> {
     return json(200, { duplicate: item !== null, media: item === null ? null : { id: item.id, publicId: item.publicId } });
   } catch (error) { return internalError(error, context.config); }
 }
+
+export default toNodeHandler(handler);

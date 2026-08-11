@@ -1,13 +1,13 @@
 import { archiveRepository, createDb, mediaRepository } from "../../_lib/db";
-import { internalError, isResponse, json, requireDevice, requireMethod } from "../../_lib/http";
+import { internalError, isResponse, json, requestUrl, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http";
 import { deleteObject, headObject, r2Context } from "../../_lib/r2";
 import { mayDeleteFromCloud, toRetentionInput } from "../../../src/media/retention";
 
 /** Reconciles a guarded archival delete. `cloud_delete_pending` is recoverable after a crash. */
-export default async function handler(request: Request): Promise<Response> {
+async function handler(request: Request): Promise<Response> {
   const method = requireMethod(request, "POST"); if (method) return method;
   const context = await requireDevice(request); if (isResponse(context)) return context;
-  const id = new URL(request.url).pathname.split("/").at(-2) ?? "";
+  const id = requestUrl(request).pathname.split("/").at(-2) ?? "";
   try {
     const db = createDb(context.config.database); const media = mediaRepository(db); const archive = archiveRepository(db);
     let item = await media.byId(context.ownerId, id); if (!item) return json(404, { error: "not_found" });
@@ -25,3 +25,5 @@ export default async function handler(request: Request): Promise<Response> {
     return json(200, { item: offline, idempotent: false });
   } catch (error) { return internalError(error, context.config); }
 }
+
+export default toNodeHandler(handler);
