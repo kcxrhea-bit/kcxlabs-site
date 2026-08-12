@@ -1,12 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { basename, dirname, join } from "node:path";
-import type { DevicePairingStatus, MediaUploadRecord, MediaVisibility, OperationResult } from "../src/shared/desktop";
+import { basename, dirname, extname, join, parse } from "node:path";
+import type { DevicePairingStatus, MediaLocalFile, MediaUploadRecord, MediaVisibility, OperationResult } from "../src/shared/desktop";
 
 const API_BASE = "https://kcxlabs.org/api";
+export const RECORDING_INBOX = "D:\\Fortnite screen recordings\\Recorded-to-send";
+export const SENT_MEDIA_FOLDER = "D:\\Fortnite screen recordings\\Sent-to-Website";
+export const SUPPORTED_VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"]);
 
 // KCx Media Center is one publishing pipeline: every desktop upload becomes a public,
 // shareable KCx Clip. The server still models private/unlisted/public for API compatibility
@@ -43,6 +46,29 @@ export class MediaService {
     this.deviceTokenFile = join(userData, "media-device.json");
   }
 
+  get recordingInbox(): string {
+    return RECORDING_INBOX;
+  }
+
+  async describeFiles(filePaths: string[]): Promise<MediaLocalFile[]> {
+    const described = await Promise.all(filePaths.map(async (filePath) => {
+      if (!SUPPORTED_VIDEO_EXTENSIONS.has(extname(filePath).toLowerCase())) return null;
+      const info = await stat(filePath);
+      return info.isFile() ? { filePath, fileName: basename(filePath), bytes: info.size } : null;
+    }));
+    return described.filter((file): file is MediaLocalFile => file !== null);
+  }
+
+  async scanInbox(): Promise<MediaLocalFile[]> {
+    try {
+      const entries = await readdir(RECORDING_INBOX, { withFileTypes: true });
+      return this.describeFiles(entries.filter((entry) => entry.isFile()).map((entry) => join(RECORDING_INBOX, entry.name)));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+  }
+
   // ─── Device pairing ──────────────────────────────────────────────────────
 
   async getPairingStatus(): Promise<DevicePairingStatus> {
@@ -72,7 +98,7 @@ export class MediaService {
 
   async listPending(): Promise<MediaUploadRecord[]> {
     const records = await this.readRecords();
-    return records.filter((record) => record.objectUploaded && record.stage !== "finalized");
+    return records.filter((record) => record.objectUploaded && record.stage === "failed");
   }
 
   async upload(filePath: string, onProgress: ProgressCallback): Promise<MediaUploadRecord> {
@@ -92,6 +118,8 @@ export class MediaService {
       shareUrl: null,
       duplicate: false,
       error: null,
+      moveError: null,
+      movedTo: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -115,7 +143,8 @@ export class MediaService {
 
       const check = await this.postJson<CheckHashResponse>(`${API_BASE}/media/check-hash`, { sha256 }, token);
       if (check.duplicate && check.media) {
-        return await emit({ stage: "finalized", duplicate: true, mediaId: check.media.id, publicId: check.media.publicId });
+        const published = await emit({ stage: "finalized", duplicate: true, mediaId: check.media.id, publicId: check.media.publicId });
+        return this.movePublishedFile(published, onProgress);
       }
 
       await emit({ stage: "authorizing" });
@@ -125,14 +154,16 @@ export class MediaService {
         token,
       );
       if (authorize.duplicate) {
-        return await emit({ stage: "finalized", duplicate: true, mediaId: authorize.mediaId, publicId: authorize.publicId, shareUrl: authorize.shareUrl });
+        const published = await emit({ stage: "finalized", duplicate: true, mediaId: authorize.mediaId, publicId: authorize.publicId, shareUrl: authorize.shareUrl });
+        return this.movePublishedFile(published, onProgress);
       }
       await emit({ stage: "uploading", mediaId: authorize.mediaId, publicId: authorize.publicId, progress: 0 });
 
       await this.putFile(authorize.authorization.url, filePath, info.size, authorize.authorization.headers, (progress) => onProgress({ ...record, progress }));
       await emit({ stage: "uploaded", objectUploaded: true, progress: 100 });
 
-      return await this.finalize(id, onProgress);
+      const published = await this.finalize(id, onProgress);
+      return published.stage === "finalized" ? this.movePublishedFile(published, onProgress) : published;
     } catch (error) {
       return emit({ stage: "failed", error: error instanceof Error ? error.message : String(error) });
     }
@@ -144,7 +175,41 @@ export class MediaService {
     if (!existing) throw new Error("No pending upload was found for that id.");
     if (!existing.objectUploaded) throw new Error("The file upload did not complete, so there is nothing to finalize. Start a new upload instead.");
     onProgress(existing);
-    return this.finalize(id, onProgress);
+    const published = await this.finalize(id, onProgress);
+    return published.stage === "finalized" ? this.movePublishedFile(published, onProgress) : published;
+  }
+
+  async movePublishedFile(record: MediaUploadRecord, onProgress: ProgressCallback, destinationFolder = SENT_MEDIA_FOLDER): Promise<MediaUploadRecord> {
+    if (record.stage !== "finalized") throw new Error("A clip can only move after it is finalized or verified as an existing duplicate.");
+    const emit = async (patch: Partial<MediaUploadRecord>) => {
+      const next = { ...record, ...patch, updatedAt: new Date().toISOString() };
+      record = next;
+      onProgress(next);
+      await this.saveRecord(next);
+      return next;
+    };
+    try {
+      await emit({ stage: "moving", moveError: null });
+      await mkdir(destinationFolder, { recursive: true });
+      const target = await this.availableMovePath(destinationFolder, record.fileName);
+      await rename(record.filePath, target);
+      return emit({ stage: "moved", movedTo: target });
+    } catch (error) {
+      return emit({ stage: "finalized", moveError: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  private async availableMovePath(destinationFolder: string, fileName: string): Promise<string> {
+    const parts = parse(fileName);
+    for (let suffix = 0; ; suffix += 1) {
+      const candidate = join(destinationFolder, suffix === 0 ? fileName : `${parts.name} (${suffix})${parts.ext}`);
+      try {
+        await stat(candidate);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return candidate;
+        throw error;
+      }
+    }
   }
 
   private async finalize(id: string, onProgress: ProgressCallback): Promise<MediaUploadRecord> {

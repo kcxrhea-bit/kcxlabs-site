@@ -33,6 +33,18 @@ await Promise.all([
     format: "cjs",
     outfile: "dist-electron/platform-service.cjs",
   }),
+  build({
+    ...shared,
+    entryPoints: ["electron/media-service.ts"],
+    format: "cjs",
+    outfile: "dist-electron/media-service.cjs",
+  }),
+  build({
+    ...shared,
+    entryPoints: ["src/desktop/media-queue.ts"],
+    format: "cjs",
+    outfile: "dist-electron/media-queue.cjs",
+  }),
   // Isomorphic media core (types, retention, filename safety, content rules).
   // Bundled here so the node:test suites can import the same compiled logic the
   // API and the Electron media services use, rather than a re-implementation.

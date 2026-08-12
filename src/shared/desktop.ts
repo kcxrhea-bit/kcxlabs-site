@@ -32,7 +32,8 @@ export type DesktopApi = {
   stopWebsitePreview(): Promise<PreviewStatus>;
   scanTheme(projectId: string): Promise<ThemeScan>;
   syncTheme(projectId: string): Promise<OperationResult>;
-  chooseMediaFile(): Promise<string | null>;
+  chooseMediaFiles(): Promise<MediaLocalFile[]>;
+  scanMediaInbox(): Promise<MediaLocalFile[]>;
   listPendingMediaUploads(): Promise<MediaUploadRecord[]>;
   // No visibility parameter: every Media Center upload is public/shareable by product design
   // (see MediaService's CANONICAL_MEDIA_VISIBILITY). The desktop user never chooses this.
@@ -95,7 +96,8 @@ export type ThemeFileState = { source: string; destination: string; status: "cur
 export type ThemeScan = { projectId: string; projectName: string; files: ThemeFileState[]; ready: boolean };
 
 export type MediaVisibility = "private" | "unlisted" | "public";
-export type MediaUploadStage = "hashing" | "checking" | "authorizing" | "uploading" | "uploaded" | "finalizing" | "finalized" | "failed";
+export type MediaUploadStage = "hashing" | "checking" | "authorizing" | "uploading" | "uploaded" | "finalizing" | "finalized" | "moving" | "moved" | "failed";
+export type MediaLocalFile = { filePath: string; fileName: string; bytes: number };
 
 // Renderer-visible upload state. Never carries the presigned R2 URL, upload headers, the device
 // bearer token, or any server credential — those stay inside the main-process MediaService.
@@ -116,6 +118,8 @@ export type MediaUploadRecord = {
   shareUrl: string | null;
   duplicate: boolean;
   error: string | null;
+  moveError: string | null;
+  movedTo: string | null;
   createdAt: string;
   updatedAt: string;
 };

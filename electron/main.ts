@@ -129,12 +129,13 @@ app.whenReady().then(() => {
 
   // ─── Media Center ──────────────────────────────────────────────────────────
 
-  ipcMain.handle(desktopIpcChannels.chooseMediaFile, async () => {
-    if (!mainWindow) return null;
+  ipcMain.handle(desktopIpcChannels.chooseMediaFiles, async () => {
+    if (!mainWindow) return [];
 
     const selection = await dialog.showOpenDialog(mainWindow, {
-      title: "Choose a video file",
-      properties: ["openFile"],
+      title: "Add videos to the Media Center queue",
+      defaultPath: media.recordingInbox,
+      properties: ["openFile", "multiSelections"],
       filters: [
         {
           name: "Video files",
@@ -144,8 +145,10 @@ app.whenReady().then(() => {
       ],
     });
 
-    return selection.canceled ? null : selection.filePaths[0];
+    return selection.canceled ? [] : media.describeFiles(selection.filePaths);
   });
+
+  ipcMain.handle(desktopIpcChannels.scanMediaInbox, () => media.scanInbox());
 
   ipcMain.handle(
     desktopIpcChannels.listPendingMediaUploads,

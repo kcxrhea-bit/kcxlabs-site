@@ -15,3 +15,8 @@ test("preload exposes the typed desktop bridge only", () => {
   assert.match(preload, /contextBridge\.exposeInMainWorld\("kcxDesktop", desktopApi\)/);
   assert.doesNotMatch(preload, /sendSync|eval|executeJavaScript/);
 });
+
+test("Media Center picker enables multi-select and returns all selected paths for safe description", () => {
+  assert.match(main, /properties:\s*\["openFile",\s*"multiSelections"\]/);
+  assert.match(main, /media\.describeFiles\(selection\.filePaths\)/);
+});
