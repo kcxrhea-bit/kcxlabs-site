@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { IpcRendererEvent } from "electron";
 import { desktopIpcChannels } from "./ipc";
-import type { DesktopApi } from "../src/shared/desktop";
+import type { DesktopApi, MediaUploadRecord } from "../src/shared/desktop";
 
 const desktopApi: DesktopApi = {
   getStatus: () => ipcRenderer.invoke(desktopIpcChannels.getStatus),
@@ -30,6 +31,19 @@ const desktopApi: DesktopApi = {
   stopWebsitePreview: () => ipcRenderer.invoke(desktopIpcChannels.stopWebsitePreview),
   scanTheme: (projectId) => ipcRenderer.invoke(desktopIpcChannels.scanTheme, projectId),
   syncTheme: (projectId) => ipcRenderer.invoke(desktopIpcChannels.syncTheme, projectId),
+  chooseMediaFile: () => ipcRenderer.invoke(desktopIpcChannels.chooseMediaFile),
+  listPendingMediaUploads: () => ipcRenderer.invoke(desktopIpcChannels.listPendingMediaUploads),
+  startMediaUpload: (filePath: string) => ipcRenderer.invoke(desktopIpcChannels.startMediaUpload, filePath),
+  retryMediaFinalize: (id: string) => ipcRenderer.invoke(desktopIpcChannels.retryMediaFinalize, id),
+  onMediaProgress: (listener: (record: MediaUploadRecord) => void) => {
+    const handler = (_event: IpcRendererEvent, record: MediaUploadRecord) => listener(record);
+    ipcRenderer.on(desktopIpcChannels.mediaProgress, handler);
+    return () => ipcRenderer.removeListener(desktopIpcChannels.mediaProgress, handler);
+  },
+  getDevicePairingStatus: () => ipcRenderer.invoke(desktopIpcChannels.getDevicePairingStatus),
+  pairDevice: (email: string, password: string, deviceName: string) => ipcRenderer.invoke(desktopIpcChannels.pairDevice, email, password, deviceName),
+  unpairDevice: () => ipcRenderer.invoke(desktopIpcChannels.unpairDevice),
+  openMediaShareUrl: (url: string) => ipcRenderer.invoke(desktopIpcChannels.openMediaShareUrl, url),
 };
 
 contextBridge.exposeInMainWorld("kcxDesktop", desktopApi);

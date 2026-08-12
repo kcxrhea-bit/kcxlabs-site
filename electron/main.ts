@@ -7,6 +7,7 @@ import { createCatalogService } from "./catalog-service";
 import { previewRelease } from "./release-planner";
 import { PlatformService } from "./platform-service";
 import { scanForProjects } from "./project-discovery";
+import { MediaService } from "./media-service";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
   ipcMain.handle(desktopIpcChannels.getStatus, getDesktopStatus);
   const catalog = createCatalogService(app.getPath("userData"));
   const platform = new PlatformService(app.getAppPath(), app.getPath("userData"));
+  const media = new MediaService(app.getPath("userData"));
   ipcMain.handle(desktopIpcChannels.listProjects, () => catalog.list());
   ipcMain.handle(desktopIpcChannels.addProject, (_event, input: NewCatalogProject) => catalog.add(input));
   ipcMain.handle(desktopIpcChannels.chooseProjectFolder, async () => {
@@ -123,6 +125,86 @@ app.whenReady().then(() => {
   ipcMain.handle(desktopIpcChannels.stopWebsitePreview, () => platform.stopPreview());
   ipcMain.handle(desktopIpcChannels.scanTheme, async (_event, id: string) => platform.scanTheme((await catalog.list()).find((project) => project.id === id)));
   ipcMain.handle(desktopIpcChannels.syncTheme, async (_event, id: string) => platform.syncTheme((await catalog.list()).find((project) => project.id === id)));
+
+
+  // ─── Media Center ──────────────────────────────────────────────────────────
+
+  ipcMain.handle(desktopIpcChannels.chooseMediaFile, async () => {
+    if (!mainWindow) return null;
+
+    const selection = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a video file",
+      properties: ["openFile"],
+      filters: [
+        {
+          name: "Video files",
+          extensions: ["mp4", "mov", "mkv", "webm", "avi", "m4v"],
+        },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+
+    return selection.canceled ? null : selection.filePaths[0];
+  });
+
+  ipcMain.handle(
+    desktopIpcChannels.listPendingMediaUploads,
+    () => media.listPending(),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.startMediaUpload,
+    (_event, filePath: string) =>
+      media.upload(filePath, (record) =>
+        mainWindow?.webContents.send(
+          desktopIpcChannels.mediaProgress,
+          record,
+        ),
+      ),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.retryMediaFinalize,
+    (_event, id: string) =>
+      media.retryFinalize(id, (record) =>
+        mainWindow?.webContents.send(
+          desktopIpcChannels.mediaProgress,
+          record,
+        ),
+      ),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.getDevicePairingStatus,
+    () => media.getPairingStatus(),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.pairDevice,
+    (_event, email: string, password: string, deviceName: string) =>
+      media.pair(email, password, deviceName),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.unpairDevice,
+    () => media.unpair(),
+  );
+
+  // Opens a clip's share URL in the OS default browser. Scoped to the public site's own
+  // origin — never a general-purpose external-URL opener — so a compromised renderer cannot
+  // repurpose this channel to launch an arbitrary link.
+  ipcMain.handle(desktopIpcChannels.openMediaShareUrl, async (_event, url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.origin !== "https://kcxlabs.org") {
+        return { ok: false, message: "Refused to open a URL outside kcxlabs.org." };
+      }
+      await shell.openExternal(parsed.href);
+      return { ok: true, message: "Opened in your default browser." };
+    } catch {
+      return { ok: false, message: "That share URL is not valid." };
+    }
+  });
   createWindow();
 
   app.on("activate", () => {
