@@ -1,11 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import type { DevicePairingStatus, MediaUploadRecord, MediaVisibility } from "../shared/desktop";
-
-const visibilityOptions: { value: MediaVisibility; label: string }[] = [
-  { value: "private", label: "Private" },
-  { value: "unlisted", label: "Unlisted" },
-  { value: "public", label: "Public" },
-];
+import type { DevicePairingStatus, MediaUploadRecord } from "../shared/desktop";
 
 const stageLabel: Record<MediaUploadRecord["stage"], string> = {
   hashing: "Hashing",
@@ -115,7 +109,6 @@ function Pairing({ status, refresh, setMessage }: { status: DevicePairingStatus;
 export function MediaCenter({ setMessage }: { setMessage: (value: string) => void }) {
   const [pairingStatus, setPairingStatus] = useState<DevicePairingStatus | null>(null);
   const [filePath, setFilePath] = useState("");
-  const [visibility, setVisibility] = useState<MediaVisibility>("private");
   const [active, setActive] = useState<MediaUploadRecord | null>(null);
   const [pending, setPending] = useState<MediaUploadRecord[]>([]);
   const [busy, setBusy] = useState(false);
@@ -149,7 +142,7 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
     expectingNewUpload.current = true;
     setActive(null);
     try {
-      const result = await window.kcxDesktop!.startMediaUpload(filePath, visibility);
+      const result = await window.kcxDesktop!.startMediaUpload(filePath);
       setActive(result);
       if (result.stage === "finalized") setMessage(result.duplicate ? "Media already published; reusing existing share link" : "Media published");
       else setMessage(result.error ? `Media upload failed: ${result.error}` : "Media upload needs attention");
@@ -183,19 +176,14 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
       {pairingStatus && <Pairing status={pairingStatus} refresh={refreshPairing} setMessage={setMessage} />}
 
       <section className="desktop-card desktop-form">
-        <h2>Upload a video</h2>
+        <h2>Upload a clip</h2>
         <p>SHA-256 and file size are calculated locally. The file uploads directly to a short-lived storage URL — this app never sees or stores R2 bucket credentials.</p>
+        <p>Every upload is published to KCx Clips with a public, shareable link — there's no visibility choice to make.</p>
         {pairingStatus && !pairingStatus.paired && <p className="desktop-warning">Pair this device above before uploading.</p>}
         <label>
           Local file
           <button type="button" className="desktop-action" onClick={chooseFile} disabled={busy}>Choose video file</button>
           <small>{filePath || "No file selected"}</small>
-        </label>
-        <label>
-          Visibility
-          <select value={visibility} onChange={(event) => setVisibility(event.target.value as MediaVisibility)} disabled={busy}>
-            {visibilityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
         </label>
         <button className="desktop-action" disabled={busy || !filePath || !pairingStatus?.paired} onClick={startUpload}>{busy ? "Working…" : "Upload"}</button>
       </section>
@@ -218,7 +206,9 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
               {active.error && <p className="desktop-error">{active.error}</p>}
               {activeShareUrl && (
                 <p>
-                  Share URL: <a href={activeShareUrl} target="_blank" rel="noopener noreferrer">{activeShareUrl}</a>
+                  Clip page: <button type="button" className="desktop-link" onClick={() => void window.kcxDesktop!.openMediaShareUrl(activeShareUrl)}>{activeShareUrl}</button>
+                  <br />
+                  <small>This is the live kcxlabs.org page for this clip. Opens in your default browser.</small>
                 </p>
               )}
               {active.stage === "failed" && canRetryFinalize(active) && (

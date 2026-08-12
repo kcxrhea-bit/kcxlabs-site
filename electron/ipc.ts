@@ -33,6 +33,7 @@ export const desktopIpcChannels = {
   getDevicePairingStatus: "media:pairing-status",
   pairDevice: "media:pair",
   unpairDevice: "media:unpair",
+  openMediaShareUrl: "media:open-share-url",
 } as const;
 
 export type DesktopIpcChannel = (typeof desktopIpcChannels)[keyof typeof desktopIpcChannels];

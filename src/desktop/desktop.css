@@ -374,5 +374,7 @@
 
 .media-progress-track { width: 100%; max-width: 24rem; height: 0.4rem; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); margin: 0.5rem 0; }
 .media-progress-fill { height: 100%; background: #ff7a1a; transition: width 0.2s ease; }
+.desktop-link { background: none; border: none; padding: 0; font: inherit; font-size: 0.85rem; color: #37d5ff; text-decoration: underline; cursor: pointer; word-break: break-all; text-align: left; }
+.desktop-link:hover { color: #7fe6ff; }
 @media (max-width: 860px) { .desktop-app { grid-template-columns: 1fr; }.desktop-nav { display: none; }.desktop-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }.desktop-workspace { padding-top: 1.5rem; }.desktop-art { background-position: 62% center; } }
 @media (max-width: 560px) { .desktop-grid { grid-template-columns: 1fr; }.desktop-header, .desktop-primary-card, .desktop-system-card { align-items: flex-start; flex-direction: column; }.desktop-status { display: none; } }

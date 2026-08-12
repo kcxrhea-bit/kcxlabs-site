@@ -34,12 +34,16 @@ export type DesktopApi = {
   syncTheme(projectId: string): Promise<OperationResult>;
   chooseMediaFile(): Promise<string | null>;
   listPendingMediaUploads(): Promise<MediaUploadRecord[]>;
-  startMediaUpload(filePath: string, visibility: MediaVisibility): Promise<MediaUploadRecord>;
+  // No visibility parameter: every Media Center upload is public/shareable by product design
+  // (see MediaService's CANONICAL_MEDIA_VISIBILITY). The desktop user never chooses this.
+  startMediaUpload(filePath: string): Promise<MediaUploadRecord>;
   retryMediaFinalize(id: string): Promise<MediaUploadRecord>;
   onMediaProgress(listener: (record: MediaUploadRecord) => void): () => void;
   getDevicePairingStatus(): Promise<DevicePairingStatus>;
   pairDevice(email: string, password: string, deviceName: string): Promise<OperationResult>;
   unpairDevice(): Promise<OperationResult>;
+  /** Opens a clip's kcxlabs.org share URL in the OS default browser via `shell.openExternal`. Refuses anything off-origin. */
+  openMediaShareUrl(url: string): Promise<OperationResult>;
 };
 
 export type ReleaseChannel = "stable" | "beta" | "alpha" | "experimental";

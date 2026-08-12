@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { desktopIpcChannels } from "./ipc";
-import type { DesktopStatus, MediaVisibility, NewCatalogProject, ReleaseDraft } from "../src/shared/desktop";
+import type { DesktopStatus, NewCatalogProject, ReleaseDraft } from "../src/shared/desktop";
 import { createCatalogService } from "./catalog-service";
 import { previewRelease } from "./release-planner";
 import { PlatformService } from "./platform-service";
@@ -154,8 +154,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     desktopIpcChannels.startMediaUpload,
-    (_event, filePath: string, visibility: MediaVisibility) =>
-      media.upload(filePath, visibility, (record) =>
+    (_event, filePath: string) =>
+      media.upload(filePath, (record) =>
         mainWindow?.webContents.send(
           desktopIpcChannels.mediaProgress,
           record,
@@ -189,6 +189,22 @@ app.whenReady().then(() => {
     desktopIpcChannels.unpairDevice,
     () => media.unpair(),
   );
+
+  // Opens a clip's share URL in the OS default browser. Scoped to the public site's own
+  // origin — never a general-purpose external-URL opener — so a compromised renderer cannot
+  // repurpose this channel to launch an arbitrary link.
+  ipcMain.handle(desktopIpcChannels.openMediaShareUrl, async (_event, url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.origin !== "https://kcxlabs.org") {
+        return { ok: false, message: "Refused to open a URL outside kcxlabs.org." };
+      }
+      await shell.openExternal(parsed.href);
+      return { ok: true, message: "Opened in your default browser." };
+    } catch {
+      return { ok: false, message: "That share URL is not valid." };
+    }
+  });
   createWindow();
 
   app.on("activate", () => {

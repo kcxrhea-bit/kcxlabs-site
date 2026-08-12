@@ -8,6 +8,12 @@ import type { DevicePairingStatus, MediaUploadRecord, MediaVisibility, Operation
 
 const API_BASE = "https://kcxlabs.org/api";
 
+// KCx Media Center is one publishing pipeline: every desktop upload becomes a public,
+// shareable KCx Clip. The server still models private/unlisted/public for API compatibility
+// (see src/media/types.ts), so this is the one canonical value the desktop ever sends — the
+// user is never asked to choose.
+const CANONICAL_MEDIA_VISIBILITY: MediaVisibility = "public";
+
 // Matches api/media/check-hash.ts's response shape on the server.
 type CheckHashResponse = { duplicate: boolean; media: { id: string; publicId: string } | null };
 // Matches api/media/upload-authorize.ts. The "duplicate" branch can happen even here (a race
@@ -69,7 +75,7 @@ export class MediaService {
     return records.filter((record) => record.objectUploaded && record.stage !== "finalized");
   }
 
-  async upload(filePath: string, visibility: MediaVisibility, onProgress: ProgressCallback): Promise<MediaUploadRecord> {
+  async upload(filePath: string, onProgress: ProgressCallback): Promise<MediaUploadRecord> {
     const id = randomUUID();
     let record: MediaUploadRecord = {
       id,
@@ -79,7 +85,7 @@ export class MediaService {
       sha256: null,
       stage: "hashing",
       progress: 0,
-      visibility,
+      visibility: CANONICAL_MEDIA_VISIBILITY,
       mediaId: null,
       objectUploaded: false,
       publicId: null,
@@ -115,7 +121,7 @@ export class MediaService {
       await emit({ stage: "authorizing" });
       const authorize = await this.postJson<AuthorizeResponse>(
         `${API_BASE}/media/upload-authorize`,
-        { filename: record.fileName, sizeBytes: info.size, sha256, visibility },
+        { filename: record.fileName, sizeBytes: info.size, sha256, visibility: record.visibility },
         token,
       );
       if (authorize.duplicate) {
