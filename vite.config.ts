@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  base: "./",
+  base: "/",
   plugins: [react(), tailwindcss()],
   // Dev-only: `server` is never read by `vite build`, so this has no effect
   // on the production bundle or on vercel.json's routing.
