@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { basename, dirname, join } from "node:path";
-import type { DevicePairingStatus, MediaUploadRecord, MediaVisibility, OperationResult } from "../src/shared/desktop";
+import type { DevicePairingStatus, MediaUploadRecord, MediaVisibility, OperationResult, UploadedMediaItem } from "../src/shared/desktop";
 
 const API_BASE = "https://kcxlabs.org/api";
 
@@ -25,6 +25,7 @@ type AuthorizeResponse =
 type FinalizeResponse = { item: { publicId: string }; shareUrl: string; idempotent: boolean };
 // Matches api/auth/pair.ts.
 type PairResponse = { token: string; expiresAt: string };
+type MediaListResponse = { items: Array<UploadedMediaItem & Record<string, unknown>> };
 
 type ProgressCallback = (record: MediaUploadRecord) => void;
 type StoredDeviceToken = { token: string; deviceName: string; expiresAt: string };
@@ -66,6 +67,25 @@ export class MediaService {
   async unpair(): Promise<OperationResult> {
     await this.writeDeviceToken(null);
     return { ok: true, message: "Device credential removed from this machine. It remains valid on the server until it expires." };
+  }
+
+  async listUploadedMedia(): Promise<UploadedMediaItem[]> {
+    const token = await this.requireToken();
+    const response = await this.requestJson<MediaListResponse>(`${API_BASE}/media?limit=100`, "GET", token);
+    return response.items.map(({ id, title, originalFilename, visibility, status, originalOnline, archiveState }) => ({
+      id, title, originalFilename, visibility, status, originalOnline, archiveState,
+    }));
+  }
+
+  async removeUploadedMedia(id: string): Promise<OperationResult> {
+    if (!id) return { ok: false, message: "No uploaded media item was selected." };
+    try {
+      const token = await this.requireToken();
+      await this.requestJson<void>(`${API_BASE}/media/${encodeURIComponent(id)}`, "DELETE", token);
+      return { ok: true, message: "Media removed from the website." };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   // ─── Upload flow ─────────────────────────────────────────────────────────
@@ -227,6 +247,16 @@ export class MediaService {
       const detail = await response.text().catch(() => response.statusText);
       throw new Error(`${url} failed: ${response.status} ${detail}`.trim());
     }
+    return (await response.json()) as T;
+  }
+
+  private async requestJson<T>(url: string, method: "GET" | "DELETE", token: string): Promise<T> {
+    const response = await fetch(url, { method, headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => response.statusText);
+      throw new Error(`${url} failed: ${response.status} ${detail}`.trim());
+    }
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
 

@@ -153,6 +153,16 @@ app.whenReady().then(() => {
   );
 
   ipcMain.handle(
+    desktopIpcChannels.listUploadedMedia,
+    () => media.listUploadedMedia(),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.removeUploadedMedia,
+    (_event, id: string) => media.removeUploadedMedia(id),
+  );
+
+  ipcMain.handle(
     desktopIpcChannels.startMediaUpload,
     (_event, filePath: string) =>
       media.upload(filePath, (record) =>

@@ -209,6 +209,8 @@ test("GET PATCH and DELETE media operations remain owner-authenticated and bound
   assert.match(route, /request\.method==="DELETE"/);
   assert.match(route, /Object\.keys\(body\)\.some\(k=>!mutable\.has\(k\)\)/);
   assert.match(route, /repo\.softDelete\(context\.ownerId,id\)/);
+  assert.match(route, /new Response\(null,\{status:204\}\)/);
+  assert.doesNotMatch(route, /json\(204,/);
   assert.doesNotMatch(route, /deleteObject|mayDeleteFromCloud/);
 });
 

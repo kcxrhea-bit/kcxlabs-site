@@ -34,6 +34,8 @@ export type DesktopApi = {
   syncTheme(projectId: string): Promise<OperationResult>;
   chooseMediaFile(): Promise<string | null>;
   listPendingMediaUploads(): Promise<MediaUploadRecord[]>;
+  listUploadedMedia(): Promise<UploadedMediaItem[]>;
+  removeUploadedMedia(id: string): Promise<OperationResult>;
   // No visibility parameter: every Media Center upload is public/shareable by product design
   // (see MediaService's CANONICAL_MEDIA_VISIBILITY). The desktop user never chooses this.
   startMediaUpload(filePath: string): Promise<MediaUploadRecord>;
@@ -95,6 +97,15 @@ export type ThemeFileState = { source: string; destination: string; status: "cur
 export type ThemeScan = { projectId: string; projectName: string; files: ThemeFileState[]; ready: boolean };
 
 export type MediaVisibility = "private" | "unlisted" | "public";
+export type UploadedMediaItem = {
+  id: string;
+  title: string;
+  originalFilename: string;
+  visibility: MediaVisibility;
+  status: string;
+  originalOnline: boolean;
+  archiveState: string;
+};
 export type MediaUploadStage = "hashing" | "checking" | "authorizing" | "uploading" | "uploaded" | "finalizing" | "finalized" | "failed";
 
 // Renderer-visible upload state. Never carries the presigned R2 URL, upload headers, the device

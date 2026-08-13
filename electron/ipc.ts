@@ -27,6 +27,8 @@ export const desktopIpcChannels = {
   syncTheme: "theme:sync",
   chooseMediaFile: "media:choose-file",
   listPendingMediaUploads: "media:list-pending",
+  listUploadedMedia: "media:list-uploaded",
+  removeUploadedMedia: "media:remove-uploaded",
   startMediaUpload: "media:start-upload",
   retryMediaFinalize: "media:retry-finalize",
   mediaProgress: "media:progress",

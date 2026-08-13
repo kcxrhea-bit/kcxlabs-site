@@ -1,12 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowLeft, Calendar, Clapperboard, HardDrive, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { SectionHeader } from "../ui/SectionHeader";
 import type { PublicMediaItem, SharePageMode } from "../../media/types";
 
 type FetchResult<T> = { ok: true; body: T } | { ok: false; status: number };
 
-async function fetchJson<T>(path: string): Promise<FetchResult<T>> {
-  const response = await fetch(`/api/${path}`);
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<FetchResult<T>> {
+  const response = await fetch(`/api/${path}`, init);
   if (!response.ok) return { ok: false, status: response.status };
   return { ok: true, body: (await response.json()) as T };
 }
@@ -41,22 +41,45 @@ type ClipsState = { status: "loading" } | { status: "error" } | { status: "ready
 
 export function ClipsPage() {
   const [state, setState] = useState<ClipsState>({ status: "loading" });
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const mounted = useRef(true);
+  const lastRefreshStarted = useRef(0);
+
+  const loadClips = useCallback(async (showInitialLoading = false) => {
+    if (showInitialLoading) setState({ status: "loading" });
+    else setRefreshing(true);
+    try {
+      const result = await fetchJson<{ items: PublicMediaItem[] }>("clips", { cache: "no-store" });
+      if (!mounted.current) return;
+      setState((current) => result.ok ? { status: "ready", items: result.body.items } : current.status === "ready" ? current : { status: "error" });
+      if (result.ok) setLastUpdated(new Date());
+    } catch {
+      if (mounted.current) setState((current) => current.status === "ready" ? current : { status: "error" });
+    } finally {
+      if (mounted.current) setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setState({ status: "loading" });
-    fetchJson<{ items: PublicMediaItem[] }>("clips")
-      .then((result) => {
-        if (cancelled) return;
-        setState(result.ok ? { status: "ready", items: result.body.items } : { status: "error" });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ status: "error" });
-      });
-    return () => {
-      cancelled = true;
+    mounted.current = true;
+    lastRefreshStarted.current = Date.now();
+    void loadClips(true);
+    const refreshAfterReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastRefreshStarted.current < 750) return;
+      lastRefreshStarted.current = now;
+      void loadClips();
     };
-  }, []);
+    window.addEventListener("focus", refreshAfterReturn);
+    document.addEventListener("visibilitychange", refreshAfterReturn);
+    return () => {
+      mounted.current = false;
+      window.removeEventListener("focus", refreshAfterReturn);
+      document.removeEventListener("visibilitychange", refreshAfterReturn);
+    };
+  }, [loadClips]);
 
   return (
     <section className="section-shell pt-32 lg:pt-36" aria-labelledby="clips-title">
@@ -66,6 +89,16 @@ export function ClipsPage() {
         description="Public clips published from the KCx Media Center — every desktop upload lands here automatically, no redeploy required."
       />
       <div className="mx-auto max-w-6xl">
+        <div className="mb-5 grid gap-3 border border-white/10 bg-black/25 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div>
+            <p className="text-sm font-semibold text-white">Public clip gallery</p>
+            <p className="mt-1 text-xs text-kcx-ash">{state.status === "ready" ? `${state.items.length} clip${state.items.length === 1 ? "" : "s"}` : "Checking clips"}{lastUpdated ? ` · Updated ${lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</p>
+          </div>
+          <button type="button" onClick={() => void loadClips()} disabled={refreshing} className="button-secondary focus-ring justify-self-start sm:justify-self-end">
+            <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
         {state.status === "loading" && (
           <div className="flex items-center justify-center gap-3 py-16 text-kcx-ash">
             <Loader2 size={20} className="animate-spin text-kcx-orange" aria-hidden="true" />

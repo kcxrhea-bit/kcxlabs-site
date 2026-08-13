@@ -1,5 +1,9 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import type { DevicePairingStatus, MediaUploadRecord } from "../shared/desktop";
+import type { DevicePairingStatus, MediaUploadRecord, UploadedMediaItem } from "../shared/desktop";
+
+type MediaView = "upload" | "online" | "recovery";
+type Verification = { action: "published" | "removed"; title: string; detail: string; shareUrl: string | null };
+type RemovalUpdate = { id: string; title: string; phase: "removing" | "checking" | "confirmed" | "pending" };
 
 const stageLabel: Record<MediaUploadRecord["stage"], string> = {
   hashing: "Hashing",
@@ -111,11 +115,26 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
   const [filePath, setFilePath] = useState("");
   const [active, setActive] = useState<MediaUploadRecord | null>(null);
   const [pending, setPending] = useState<MediaUploadRecord[]>([]);
+  const [uploaded, setUploaded] = useState<UploadedMediaItem[]>([]);
+  const [uploadedError, setUploadedError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [view, setView] = useState<MediaView>("upload");
+  const [verification, setVerification] = useState<Verification | null>(null);
+  const [removalUpdate, setRemovalUpdate] = useState<RemovalUpdate | null>(null);
+  const [reloadingUploaded, setReloadingUploaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const expectingNewUpload = useRef(false);
 
   const refreshPending = async () => setPending(await window.kcxDesktop!.listPendingMediaUploads());
   const refreshPairing = async () => setPairingStatus(await window.kcxDesktop!.getDevicePairingStatus());
+  const refreshUploaded = async () => {
+    try {
+      setUploaded(await window.kcxDesktop!.listUploadedMedia());
+      setUploadedError(null);
+    } catch (error) {
+      setUploadedError(error instanceof Error ? error.message : "Could not load uploaded media.");
+    }
+  };
 
   useEffect(() => {
     void refreshPairing();
@@ -131,9 +150,61 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (pairingStatus?.paired) void refreshUploaded();
+    else if (pairingStatus) {
+      setUploaded([]);
+      setUploadedError("Pair this device to load online media.");
+    }
+  }, [pairingStatus?.paired]);
+
   const chooseFile = async () => {
     const selected = await window.kcxDesktop!.chooseMediaFile();
     if (selected) setFilePath(selected);
+  };
+
+  const removeUploaded = async (item: UploadedMediaItem) => {
+    if (!window.confirm(`Remove "${item.title || item.originalFilename}" from the website?`)) return;
+    setRemovingId(item.id);
+    setRemovalUpdate({ id: item.id, title: item.title || item.originalFilename, phase: "removing" });
+    try {
+      const result = await window.kcxDesktop!.removeUploadedMedia(item.id);
+      setMessage(result.message);
+      if (result.ok) {
+        setUploaded((current) => current.filter((candidate) => candidate.id !== item.id));
+        setRemovalUpdate({ id: item.id, title: item.title || item.originalFilename, phase: "checking" });
+        setVerification({ action: "removed", title: item.title || item.originalFilename, detail: "The clip no longer appears in Online Media or on the website.", shareUrl: null });
+        try {
+          const serverItems = await window.kcxDesktop!.listUploadedMedia();
+          const stillReported = serverItems.some((candidate) => candidate.id === item.id);
+          setUploaded(serverItems.filter((candidate) => candidate.id !== item.id));
+          setUploadedError(null);
+          setRemovalUpdate({ id: item.id, title: item.title || item.originalFilename, phase: stillReported ? "pending" : "confirmed" });
+        } catch (error) {
+          setUploadedError(error instanceof Error ? error.message : "Could not reconcile Online Media.");
+          setRemovalUpdate({ id: item.id, title: item.title || item.originalFilename, phase: "pending" });
+        }
+      } else {
+        setRemovalUpdate(null);
+      }
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  const reloadUploaded = async () => {
+    setReloadingUploaded(true);
+    try {
+      const serverItems = await window.kcxDesktop!.listUploadedMedia();
+      setUploaded(serverItems);
+      setUploadedError(null);
+      if (removalUpdate) setRemovalUpdate({ ...removalUpdate, phase: serverItems.some((item) => item.id === removalUpdate.id) ? "pending" : "confirmed" });
+      setMessage("Online Media reloaded from the server.");
+    } catch (error) {
+      setUploadedError(error instanceof Error ? error.message : "Could not reload uploaded media.");
+    } finally {
+      setReloadingUploaded(false);
+    }
   };
 
   const startUpload = async () => {
@@ -144,7 +215,12 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
     try {
       const result = await window.kcxDesktop!.startMediaUpload(filePath);
       setActive(result);
-      if (result.stage === "finalized") setMessage(result.duplicate ? "Media already published; reusing existing share link" : "Media published");
+      if (result.stage === "finalized") {
+        const shareUrl = shareUrlFor(result);
+        setMessage(result.duplicate ? "Media already published; reusing existing share link" : "Media published");
+        setVerification({ action: "published", title: result.fileName, detail: result.duplicate ? "Verified existing clip; its current share link was reused." : "Upload and finalization completed successfully.", shareUrl });
+        await refreshUploaded();
+      }
       else setMessage(result.error ? `Media upload failed: ${result.error}` : "Media upload needs attention");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Media upload failed");
@@ -172,10 +248,17 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
   const activeShareUrl = active ? shareUrlFor(active) : null;
 
   return (
-    <div className="desktop-panel-grid">
+    <div className="desktop-panel-grid media-center">
       {pairingStatus && <Pairing status={pairingStatus} refresh={refreshPairing} setMessage={setMessage} />}
+      <nav className="media-section-nav" aria-label="Media Center sections">
+        <button type="button" className={view === "upload" ? "media-section-active" : ""} onClick={() => setView("upload")}>Upload Clip</button>
+        <button type="button" className={view === "online" ? "media-section-active" : ""} onClick={() => setView("online")}>Online Media <span>{uploaded.length}</span></button>
+        <button type="button" className={view === "recovery" ? "media-section-active" : ""} onClick={() => setView("recovery")}>Recovery {pending.length > 0 && <span>{pending.length}</span>}</button>
+      </nav>
+      {verification && <section className="desktop-card media-verification" role="status"><div><p className="desktop-kicker">Action verified</p><h2>{verification.action === "published" ? "Clip published successfully" : "Clip removed successfully"}</h2><p><strong>{verification.title}</strong></p><p>{verification.detail}</p>{verification.shareUrl && <button type="button" className="desktop-link" onClick={() => void window.kcxDesktop!.openMediaShareUrl(verification.shareUrl!)}>Open verified share page</button>}</div><button type="button" className="media-dismiss" aria-label="Dismiss verification" onClick={() => setVerification(null)}>×</button></section>}
 
-      <section className="desktop-card desktop-form">
+      <div className={`media-upload-grid ${view === "upload" ? "" : "media-section-hidden"}`}>
+      <section className="desktop-card desktop-form media-workflow-card">
         <h2>Upload a clip</h2>
         <p>SHA-256 and file size are calculated locally. The file uploads directly to a short-lived storage URL — this app never sees or stores R2 bucket credentials.</p>
         <p>Every upload is published to KCx Clips with a public, shareable link — there's no visibility choice to make.</p>
@@ -188,7 +271,7 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
         <button className="desktop-action" disabled={busy || !filePath || !pairingStatus?.paired} onClick={startUpload}>{busy ? "Working…" : "Upload"}</button>
       </section>
 
-      <section className="desktop-card desktop-primary-card">
+      <section className="desktop-card desktop-primary-card media-workflow-card">
         <div>
           <p className="desktop-kicker">Current upload</p>
           {active ? (
@@ -220,18 +303,37 @@ export function MediaCenter({ setMessage }: { setMessage: (value: string) => voi
           )}
         </div>
       </section>
+      </div>
 
-      <section className="desktop-card desktop-form">
+      <section className={`desktop-card desktop-form ${view === "recovery" ? "" : "media-section-hidden"}`}>
         <h2>Interrupted uploads</h2>
         <p>Uploads whose object finished sending but never finalized (for example after closing the app) stay here until retried. A failure earlier — hashing, duplicate check, or authorization — never lands here, since nothing was sent to storage yet.</p>
-        {pending.length ? pending.map((record) => (
-          <p key={record.id}>
-            <strong>{record.fileName}</strong> · {formatBytes(record.bytes)} · <span className={stageClassName(record.stage)}>{stageLabel[record.stage]}</span>
-            {record.error && <><br /><small className="desktop-error">{record.error}</small></>}
-            <br />
+        {pending.length ? <div className="media-recovery-grid">{pending.map((record) => (
+          <article className="media-recovery-item" key={record.id}>
+            <div><strong>{record.fileName}</strong><p className="media-meta"><span>{formatBytes(record.bytes)}</span><span className={stageClassName(record.stage)}>{stageLabel[record.stage]}</span></p>
+            {record.error && <small className="desktop-error">{record.error}</small>}</div>
             <button className="desktop-action" disabled={busy || !canRetryFinalize(record)} onClick={() => void retryFinalize(record.id)}>Retry finalization</button>
-          </p>
-        )) : <p>Nothing pending.</p>}
+          </article>
+        ))}</div> : <p>Nothing pending.</p>}
+        <details className="media-guide"><summary>Recovery guide</summary><p>Interrupted uploads appear in a responsive card grid. Each card shows the filename, size, stage, failure detail, and retry action. Retry finalization only when the upload reached storage; earlier failures require a new upload from Upload Clip.</p></details>
+      </section>
+
+      <section className={`desktop-card desktop-form media-online-section ${view === "online" ? "" : "media-section-hidden"}`}>
+        <div className="media-online-heading"><div><h2>Online Media</h2><p>Existing items load from your paired KCx Media account independently of the local upload queue.</p></div><button type="button" className="desktop-action" disabled={reloadingUploaded || removingId !== null || !pairingStatus?.paired} onClick={() => void reloadUploaded()}>{reloadingUploaded ? "Reloading…" : "Reload"}</button></div>
+        {removalUpdate && <div className="media-removal-update" role="status"><strong>{removalUpdate.title}</strong><span>{removalUpdate.phase === "removing" ? "Deleting from server…" : removalUpdate.phase === "checking" ? "Deleted. Checking the server list…" : removalUpdate.phase === "confirmed" ? "Gone — server list confirms deletion." : "Delete succeeded, but the latest server list has not confirmed disappearance yet. Use Reload to check again."}</span></div>}
+        {uploadedError && <p className="desktop-error">{uploadedError}</p>}
+        {!uploadedError && uploaded.length === 0 && <p>No uploaded media found.</p>}
+        <div className="media-online-list">{uploaded.map((item) => (
+          <article className="media-online-item" key={item.id}>
+            <div><strong>{item.title || item.originalFilename}</strong>
+            {item.title && item.title !== item.originalFilename && <><br /><small>{item.originalFilename}</small></>}
+            <p className="media-meta"><span>{item.visibility}</span><span>{item.status}</span><span>{item.originalOnline ? "online" : item.archiveState}</span></p></div>
+            <button className="desktop-action" disabled={removingId !== null} onClick={() => void removeUploaded(item)}>
+              {removingId === item.id ? "Removing…" : "Remove from Website"}
+            </button>
+          </article>
+        ))}</div>
+        <details className="media-guide"><summary>Online Media guide and recovery</summary><p>Online clips appear in a responsive card grid; each card groups its title, original filename, visibility, server status, online/archive state, and removal action. Reload requests the latest list without restarting the app. Remove from Website asks for confirmation, removes the item from this screen immediately after server success, and shows whether reconciliation confirms it is gone. It never deletes a local recording. Verify the title or filename before removal. If confirmation is pending, use Reload; if loading fails, check pairing and retry. Related features are Upload Clip, Recovery, and KCx Clips share links.</p></details>
       </section>
     </div>
   );

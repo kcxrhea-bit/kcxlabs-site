@@ -33,6 +33,8 @@ const desktopApi: DesktopApi = {
   syncTheme: (projectId) => ipcRenderer.invoke(desktopIpcChannels.syncTheme, projectId),
   chooseMediaFile: () => ipcRenderer.invoke(desktopIpcChannels.chooseMediaFile),
   listPendingMediaUploads: () => ipcRenderer.invoke(desktopIpcChannels.listPendingMediaUploads),
+  listUploadedMedia: () => ipcRenderer.invoke(desktopIpcChannels.listUploadedMedia),
+  removeUploadedMedia: (id: string) => ipcRenderer.invoke(desktopIpcChannels.removeUploadedMedia, id),
   startMediaUpload: (filePath: string) => ipcRenderer.invoke(desktopIpcChannels.startMediaUpload, filePath),
   retryMediaFinalize: (id: string) => ipcRenderer.invoke(desktopIpcChannels.retryMediaFinalize, id),
   onMediaProgress: (listener: (record: MediaUploadRecord) => void) => {
