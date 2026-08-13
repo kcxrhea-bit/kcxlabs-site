@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KCx Labs Media</string>
+    <string name="title_activity_main">KCx Labs Media</string>
+    <string name="package_name">org.kcxlabs.media</string>
+    <string name="custom_url_scheme">org.kcxlabs.media</string>
+</resources>
