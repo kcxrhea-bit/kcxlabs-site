@@ -6,6 +6,26 @@ import { loadAppConfig, redactSecrets, type AppConfig } from "./config.js";
 
 export type ApiContext = { config: AppConfig; ownerId: string };
 
+const ANDROID_CAPACITOR_ORIGIN = "https://localhost";
+const ANDROID_CORS_METHODS = "GET, POST, DELETE";
+const ANDROID_CORS_HEADERS = "Content-Type, Authorization";
+
+/**
+ * The packaged Android companion is served by Capacitor from https://localhost.
+ * This deliberately grants browser CORS access only to that exact origin; device
+ * authentication still requires the existing bearer token on protected routes.
+ */
+function androidCorsHeaders(request: Request): Record<string, string> {
+  if (request.headers.get("origin") !== ANDROID_CAPACITOR_ORIGIN) return {};
+  return {
+    "Access-Control-Allow-Origin": ANDROID_CAPACITOR_ORIGIN,
+    "Access-Control-Allow-Methods": ANDROID_CORS_METHODS,
+    "Access-Control-Allow-Headers": ANDROID_CORS_HEADERS,
+    "Access-Control-Max-Age": "600",
+    Vary: "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+  };
+}
+
 /**
  * Vercel's production edge network always hands handlers an absolute
  * `request.url`, but the local `vercel dev` Node runtime hands over a
@@ -175,6 +195,14 @@ export function toNodeHandler(fetchHandler: FetchHandler) {
       return;
     }
 
+    const corsHeaders = androidCorsHeaders(request);
+    if (request.method === "OPTIONS" && Object.keys(corsHeaders).length > 0) {
+      res.statusCode = 204;
+      for (const [key, value] of Object.entries(corsHeaders)) res.setHeader(key, value);
+      res.end();
+      return;
+    }
+
     let response: Response;
     try {
       response = await fetchHandler(request);
@@ -185,6 +213,8 @@ export function toNodeHandler(fetchHandler: FetchHandler) {
       res.end(JSON.stringify({ error: "internal_error" }));
       return;
     }
+
+    for (const [key, value] of Object.entries(corsHeaders)) response.headers.set(key, value);
 
     await writeWebResponse(response, res);
   };

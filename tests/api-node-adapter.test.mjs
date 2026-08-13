@@ -89,6 +89,47 @@ test("request headers are converted and visible to the Fetch handler", async () 
   assert.equal(seenAuth, "Bearer secret-token");
 });
 
+test("the Capacitor Android origin receives a successful, narrow CORS preflight without invoking route logic", async () => {
+  let invoked = false;
+  const nodeHandler = toNodeHandler(async () => { invoked = true; return new Response(null, { status: 200 }); });
+  const req = fakeRequest({ method: "OPTIONS", url: "/api/auth/pair", headers: { host: "localhost:3456", origin: "https://localhost", "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+  const res = fakeResponse();
+  await nodeHandler(req, res);
+
+  assert.equal(invoked, false);
+  assert.equal(res.statusCode, 204);
+  assert.equal(bodyOf(res), "");
+  assert.equal(res.headers["access-control-allow-origin"], "https://localhost");
+  assert.equal(res.headers["access-control-allow-methods"], "GET, POST, DELETE");
+  assert.equal(res.headers["access-control-allow-headers"], "Content-Type, Authorization");
+});
+
+test("a normal POST response to the Capacitor Android origin carries the allow-origin header", async () => {
+  const nodeHandler = toNodeHandler(async () => new Response(JSON.stringify({ error: "invalid_request" }), { status: 400 }));
+  const req = fakeRequest({ method: "POST", url: "/api/auth/pair", headers: { host: "localhost:3456", origin: "https://localhost", "content-type": "application/json" }, body: "{}" });
+  const res = fakeResponse();
+  await nodeHandler(req, res);
+
+  assert.equal(res.statusCode, 400, "the route response status remains intact");
+  assert.equal(res.headers["access-control-allow-origin"], "https://localhost");
+});
+
+test("unapproved origins receive neither preflight access nor allow-origin headers", async () => {
+  let invoked = false;
+  const nodeHandler = toNodeHandler(async () => { invoked = true; return new Response(null, { status: 401 }); });
+  const preflightReq = fakeRequest({ method: "OPTIONS", url: "/api/auth/pair", headers: { host: "localhost:3456", origin: "https://untrusted.example" } });
+  const preflightRes = fakeResponse();
+  await nodeHandler(preflightReq, preflightRes);
+  assert.equal(invoked, true, "unapproved preflight retains existing method behavior");
+  assert.equal(preflightRes.statusCode, 401);
+  assert.equal(preflightRes.headers["access-control-allow-origin"], undefined);
+
+  const postReq = fakeRequest({ method: "POST", url: "/api/auth/pair", headers: { host: "localhost:3456", origin: "https://untrusted.example" }, body: "{}" });
+  const postRes = fakeResponse();
+  await nodeHandler(postReq, postRes);
+  assert.equal(postRes.headers["access-control-allow-origin"], undefined);
+});
+
 test("response headers set by the Fetch handler are copied back onto the Node response", async () => {
   const nodeHandler = toNodeHandler(async () => {
     return new Response(JSON.stringify({ ok: true }), {
