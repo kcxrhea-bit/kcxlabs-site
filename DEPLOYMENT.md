@@ -32,6 +32,33 @@ optional `VITE_NEXUS_*` flags are documented in
 [docs/nexus-cloud-preview.md](./docs/nexus-cloud-preview.md). Every `VITE_*` value is inlined into the
 public bundle, so never place a secret, token, or provider API key in one.
 
+## KCx Kids World (`/kids`)
+
+`public/kids/` holds the Godot Web/PWA export for KCx Kids World, served as a static subtree at
+`https://kcxlabs.org/kids/` — it bypasses the React app entirely (Vercel serves an existing static file
+before evaluating `rewrites`, and Vite copies `public/` into `dist/` verbatim).
+
+The build artifacts (`index.wasm`, `index.pck`, etc.) are **committed to git**, not generated during the
+Vercel build — Vercel's build image has no Godot toolchain, so there is no way to export the game as part
+of `npm run build`. The Godot project (`D:\KCxProjects\KCxKidsWorld`) is the source of truth; this repo
+only ever holds a synced copy of its `build/web/` export output.
+
+To update the game after a new Godot Web export:
+
+```powershell
+npm.cmd run kids:sync
+npm.cmd run build
+```
+
+`scripts/sync-kids-web-build.mjs` cleans and repopulates only `public/kids/` (never touches the rest of
+`public/`), verifies the expected Godot output files exist before and after copying, and excludes stray
+`*.import` editor metadata. It fails loudly rather than silently shipping an incomplete export.
+
+`vercel.json` adds, scoped entirely to `/kids/*`: a `/kids` → `/kids/` redirect (directory index requires
+the trailing slash), an explicit `application/wasm` Content-Type for `.wasm`, and `no-cache` on the service
+worker and manifest so PWA updates propagate. No cross-origin isolation headers are set — the export is
+single-threaded (`GODOT_THREADS_ENABLED = false`), so none are required.
+
 ## Desktop deployment workflow
 
 The KCxLabs desktop app only checks deployment readiness. It reports branch, uncommitted changes, website build result, and Vercel CLI availability; it never executes a Vercel deployment automatically.

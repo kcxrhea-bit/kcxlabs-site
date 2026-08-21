@@ -15,7 +15,8 @@
     "config:doctor": "node scripts/config-doctor.mjs",
     "auth:hash": "node scripts/auth-hash.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
-    "db:verify": "node scripts/db-verify.mjs"
+    "db:verify": "node scripts/db-verify.mjs",
+    "kids:sync": "node scripts/sync-kids-web-build.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
