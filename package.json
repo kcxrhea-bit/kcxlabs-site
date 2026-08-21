@@ -16,13 +16,15 @@
     "auth:hash": "node scripts/auth-hash.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:verify": "node scripts/db-verify.mjs",
-    "kids:sync": "node scripts/sync-kids-web-build.mjs"
+    "kids:sync": "node scripts/sync-kids-web-build.mjs",
+    "kids:sync:legacy": "node scripts/sync-kids-web-build.mjs --legacy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
     "@aws-sdk/s3-request-presigner": "^3.1107.0",
     "@neondatabase/serverless": "^1.1.0",
     "@tailwindcss/vite": "^4.1.8",
+    "@vercel/functions": "^3.9.5",
     "framer-motion": "^12.15.0",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",

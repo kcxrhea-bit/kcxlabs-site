@@ -17,6 +17,7 @@ import archiveComplete from "../server/media-api/routes/archive/[id]/complete.js
 import archiveFail from "../server/media-api/routes/archive/[id]/fail.js";
 import archiveDownloadAuthorize from "../server/media-api/routes/archive/[id]/download-authorize.js";
 import archiveRemoveCloudOriginal from "../server/media-api/routes/archive/[id]/remove-cloud-original.js";
+import kidsAccess from "../server/kids-access/route.js";
 
 /**
  * Single Vercel Function fronting the entire Media Center API, to stay under the Hobby plan's
@@ -95,6 +96,7 @@ const exactRoutes: Record<string, NodeHandler> = {
   "media/upload-authorize": uploadAuthorize,
   "media/finalize": finalize,
   "archive/jobs": archiveJobs,
+  "kids-access": kidsAccess,
 };
 
 function matchDynamic(segments: string[]): NodeHandler | null {

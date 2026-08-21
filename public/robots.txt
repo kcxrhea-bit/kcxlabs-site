@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /kids/
+Disallow: /kids-legacy/
+Disallow: /kids-access

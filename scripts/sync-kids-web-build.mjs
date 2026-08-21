@@ -6,8 +6,11 @@
 // Source of truth for the game build is the Godot project's own export, not this repo. Re-run
 // this script after every new Web export instead of hand-copying files.
 //
-// Usage: node scripts/sync-kids-web-build.mjs [--source <path>]
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, copyFileSync } from 'node:fs';
+// Usage:
+//   node scripts/sync-kids-web-build.mjs                          -> build/web        -> public/kids
+//   node scripts/sync-kids-web-build.mjs --legacy                 -> build/web-legacy -> public/kids-legacy
+//   node scripts/sync-kids-web-build.mjs --source <path> [--dest-name <name>]
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,11 +18,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 
 const args = process.argv.slice(2);
+const isLegacy = args.includes('--legacy');
 const sourceFlagIndex = args.indexOf('--source');
+const destNameFlagIndex = args.indexOf('--dest-name');
+
 const source = sourceFlagIndex !== -1 && args[sourceFlagIndex + 1]
   ? resolve(args[sourceFlagIndex + 1])
-  : resolve('D:/KCxProjects/KCxKidsWorld/build/web');
-const dest = join(repoRoot, 'public', 'kids');
+  : resolve(isLegacy ? 'D:/KCxProjects/KCxKidsWorld/build/web-legacy' : 'D:/KCxProjects/KCxKidsWorld/build/web');
+const destName = destNameFlagIndex !== -1 && args[destNameFlagIndex + 1]
+  ? args[destNameFlagIndex + 1]
+  : (isLegacy ? 'kids-legacy' : 'kids');
+const dest = join(repoRoot, 'public', destName);
 
 // Files Godot's Web export must produce for the PWA to function. If any are missing, the
 // export is incomplete or the wrong directory was pointed at — fail loudly instead of shipping
@@ -72,6 +81,32 @@ function copyDir(from, to) {
 
 copyDir(source, dest);
 
+// Godot emits an extra blank line at EOF in some text assets. Normalize copied text so the
+// generated route trees remain diff-check clean and deterministic across syncs.
+for (const entry of readdirSync(dest, { withFileTypes: true })) {
+  if (!entry.isFile() || !/\.(?:html|js|json)$/i.test(entry.name)) continue;
+  const textPath = join(dest, entry.name);
+  writeFileSync(textPath, `${readFileSync(textPath, 'utf8').trimEnd()}\n`, 'utf8');
+}
+
+// Godot derives one origin-wide cache prefix from the project name. Both route-scoped workers
+// would therefore delete each other's caches during activation. Give each copied deployment a
+// stable route-specific namespace and never store an auth redirect/error under an asset URL.
+const workerPath = join(dest, 'index.service.worker.js');
+let workerSource = readFileSync(workerPath, 'utf8');
+const originalPrefix = "const CACHE_PREFIX = 'Toca Boca Jr: Fu-sw-cache-';";
+const routePrefix = `const CACHE_PREFIX = 'kcx-kids-world-${destName}-sw-cache-';`;
+const originalCacheCondition = 'if (isCacheable) {';
+const safeCacheCondition = 'if (isCacheable && response.ok && !response.redirected) {';
+
+if (!workerSource.includes(originalPrefix) || !workerSource.includes(originalCacheCondition)) {
+  fail('Godot service-worker template changed; refusing to publish without verified cache isolation.');
+}
+workerSource = workerSource
+  .replace(originalPrefix, routePrefix)
+  .replace(originalCacheCondition, safeCacheCondition);
+writeFileSync(workerPath, workerSource, 'utf8');
+
 for (const file of REQUIRED_FILES) {
   if (!existsSync(join(dest, file))) {
     fail(`Copy verification failed: ${file} did not land in ${dest}.`);
@@ -79,4 +114,4 @@ for (const file of REQUIRED_FILES) {
 }
 
 console.log(`[sync-kids-web-build] Synced Godot Web build from:\n  ${source}\ninto:\n  ${dest}`);
-console.log('[sync-kids-web-build] Run `npm run build` and check dist/kids/ before deploying.');
+console.log(`[sync-kids-web-build] Run \`npm run build\` and check dist/${destName}/ before deploying.`);

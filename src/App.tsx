@@ -1,5 +1,6 @@
 import { AppShell } from "./components/layout/AppShell";
 import { BetaPage } from "./components/pages/BetaPage";
+import { KidsAccessPage } from "./components/pages/KidsAccessPage";
 import { ClipsPage, SharePage } from "./components/pages/MediaPublicPages";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
@@ -33,6 +34,8 @@ export default function App() {
         <ClipsPage />
       ) : route === "share" ? (
         <SharePage />
+      ) : route === "kids-access" ? (
+        <KidsAccessPage />
       ) : (
         <>
           <HeroSection />
