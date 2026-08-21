@@ -1,9 +1,9 @@
 import { next } from "@vercel/functions";
 
 /**
- * Server-side gate for the private family game routes (/kids/*, /kids-legacy/*). Runs on
- * Vercel's Edge runtime before any static file (including .wasm/.pck/.js/.wav/manifest/service
- * worker) is served, so protection covers the whole route tree, not just index.html.
+ * Server-side gate for the private family game routes (/kids/*, /kids-legacy/*, /kids-ios15/*).
+ * Runs on Vercel's Edge runtime before any static file (including .wasm/.pck/.js/.wav/manifest/
+ * service worker) is served, so protection covers the whole route tree, not just index.html.
  *
  * Verifies the `kids_auth` cookie set by server/kids-access/route.ts (POST /api/kids-access).
  * Both sides compute HMAC-SHA256(payload, KIDS_ACCESS_CODE) — that route with node:crypto, this
@@ -14,7 +14,11 @@ import { next } from "@vercel/functions";
  */
 
 export const config = {
-  matcher: ["/kids", "/kids/:path*", "/kids-legacy", "/kids-legacy/:path*"],
+  matcher: [
+    "/kids", "/kids/:path*",
+    "/kids-legacy", "/kids-legacy/:path*",
+    "/kids-ios15", "/kids-ios15/:path*",
+  ],
 };
 
 const COOKIE_NAME = "kids_auth";

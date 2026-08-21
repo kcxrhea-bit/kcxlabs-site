@@ -9,6 +9,7 @@
 // Usage:
 //   node scripts/sync-kids-web-build.mjs                          -> build/web        -> public/kids
 //   node scripts/sync-kids-web-build.mjs --legacy                 -> build/web-legacy -> public/kids-legacy
+//   node scripts/sync-kids-web-build.mjs --ios15                  -> build/web-ios15  -> public/kids-ios15
 //   node scripts/sync-kids-web-build.mjs --source <path> [--dest-name <name>]
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -19,15 +20,23 @@ const repoRoot = resolve(here, '..');
 
 const args = process.argv.slice(2);
 const isLegacy = args.includes('--legacy');
+const isIos15 = args.includes('--ios15');
 const sourceFlagIndex = args.indexOf('--source');
 const destNameFlagIndex = args.indexOf('--dest-name');
 
+const defaultSource = isIos15
+  ? 'D:/KCxProjects/KCxKidsWorld/build/web-ios15'
+  : isLegacy
+    ? 'D:/KCxProjects/KCxKidsWorld/build/web-legacy'
+    : 'D:/KCxProjects/KCxKidsWorld/build/web';
+const defaultDestName = isIos15 ? 'kids-ios15' : isLegacy ? 'kids-legacy' : 'kids';
+
 const source = sourceFlagIndex !== -1 && args[sourceFlagIndex + 1]
   ? resolve(args[sourceFlagIndex + 1])
-  : resolve(isLegacy ? 'D:/KCxProjects/KCxKidsWorld/build/web-legacy' : 'D:/KCxProjects/KCxKidsWorld/build/web');
+  : resolve(defaultSource);
 const destName = destNameFlagIndex !== -1 && args[destNameFlagIndex + 1]
   ? args[destNameFlagIndex + 1]
-  : (isLegacy ? 'kids-legacy' : 'kids');
+  : defaultDestName;
 const dest = join(repoRoot, 'public', destName);
 
 // Files Godot's Web export must produce for the PWA to function. If any are missing, the

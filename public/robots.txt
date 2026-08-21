@@ -1,4 +1,5 @@
 User-agent: *
 Disallow: /kids/
 Disallow: /kids-legacy/
+Disallow: /kids-ios15/
 Disallow: /kids-access
