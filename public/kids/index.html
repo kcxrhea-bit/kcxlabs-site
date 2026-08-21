@@ -98,6 +98,24 @@ body {
 <meta name="apple-mobile-web-app-title" content="Toca Boca Jr: Fun Kids Games">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="index.180x180.png">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<script>
+(function(){
+var startedAt=performance.now();var log=[];var panel,list;
+function ts(){return((performance.now()-startedAt)/1000).toFixed(2)+'s';}
+function render(){if(list)list.textContent=log.map(function(e){return'['+e.t+'] '+e.stage+(e.detail?': '+e.detail:'');}).join('\n');}
+function mount(){panel=document.createElement('div');panel.id='kcx-diag';panel.style.cssText='position:fixed;left:0;right:0;bottom:0;max-height:42%;overflow:auto;background:rgba(0,0,0,.82);color:#9f9;font:11px/1.4 monospace;padding:8px;z-index:99999;white-space:pre-wrap;transition:opacity 1s;';list=document.createElement('div');panel.appendChild(list);(document.body||document.documentElement).appendChild(panel);}
+window.kcxDiag=function(stage,detail){var entry={t:ts(),stage:stage,detail:detail||''};log.push(entry);try{console.log('[KCX DIAG '+entry.t+'] '+stage+(detail?(': '+detail):''));}catch(e){}if(!panel&&document.body)mount();render();if(stage==='main_scene_loaded'){setTimeout(function(){if(panel)panel.style.opacity='0.12';},2500);}};
+window.addEventListener('error',function(e){window.kcxDiag('window.onerror',(e.message||'')+' @ '+(e.filename||'')+':'+(e.lineno||''));});
+window.addEventListener('unhandledrejection',function(e){var r=e.reason;window.kcxDiag('unhandledrejection',r&&r.message?r.message:String(r));});
+var origFetch=window.fetch;
+if(origFetch){window.fetch=function(input,init){var url=typeof input==='string'?input:(input&&input.url)||'';var short=url.split('/').pop()||url;var tracked=/\.(wasm|pck)(\?|$)/.test(url);if(tracked)window.kcxDiag(short+' fetch started');return origFetch(input,init).then(function(resp){if(tracked)window.kcxDiag(short+' fetch completed','HTTP '+resp.status);return resp;},function(err){if(tracked)window.kcxDiag(short+' fetch FAILED',String(err));throw err;});};}
+var origGetContext=HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext=function(type,attrs){var ctx=origGetContext.call(this,type,attrs);if(/^webgl/i.test(type))window.kcxDiag(ctx?'webgl_context_created':'webgl_context_FAILED',type);return ctx;};
+document.addEventListener('DOMContentLoaded',function(){if(!panel)mount();window.kcxDiag('html_loaded');});
+window.addEventListener('load',function(){window.kcxDiag('js_loaded');});
+})();
+</script>
 	</head>
 	<body>
 		<canvas id="canvas">
@@ -116,7 +134,7 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":397140,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":407100,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -222,4 +240,3 @@ const engine = new Engine(GODOT_CONFIG);
 		</script>
 	</body>
 </html>
-

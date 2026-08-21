@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["api", "server/media-api", "src/media"]
+  "include": ["api", "server/media-api", "server/kids-access", "src/media", "middleware.ts"]
 }

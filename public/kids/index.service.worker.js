@@ -4,9 +4,9 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1787275649|7297549';
+const CACHE_VERSION = '1787280522|3948069';
 /** @type {string} */
-const CACHE_PREFIX = 'Toca Boca Jr: Fu-sw-cache-';
+const CACHE_PREFIX = 'kcx-kids-world-kids-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 /** @type {string} */
 const OFFLINE_URL = 'index.offline.html';
@@ -79,7 +79,7 @@ async function fetchAndCache(event, cache, isCacheable) {
 		response = ensureCrossOriginIsolationHeaders(response);
 	}
 
-	if (isCacheable) {
+	if (isCacheable && response.ok && !response.redirected) {
 		// And update the cache
 		cache.put(event.request, response.clone());
 	}
@@ -163,4 +163,3 @@ self.addEventListener('message', (event) => {
 		}
 	});
 });
-

@@ -141,6 +141,51 @@ The website preview is separate from the Electron app and tracks its own local V
 
 KCxLabs intentionally does not run preview or production deployments automatically.
 
+## Private KCx Kids World routes
+
+KCx Kids World is published as two separate Godot Web builds. Use `/kids/` for the normal build
+and `/kids-legacy/` for older devices such as the iPad Air 2 on Safari 15. The legacy build uses a
+lower-cost compatibility profile; it does not replace the normal build.
+
+Before syncing, export **Web** to `KCxKidsWorld/build/web` and **Web Legacy** to
+`KCxKidsWorld/build/web-legacy`. Run `npm run kids:sync` for the normal build and
+`npm run kids:sync:legacy` for the legacy build, then run `npm run build`. The sync commands copy
+the exports into `public/kids` and `public/kids-legacy`; the production build carries them into the
+matching `dist` folders. Each route gets its own service-worker cache namespace so the builds do
+not evict one another. Re-run the sync after every Godot export instead of editing either public
+copy by hand.
+
+Both route trees are private. Vercel middleware redirects unauthenticated requests to
+`/kids-access`, and the server-side access endpoint sets a 30-day `HttpOnly`, `Secure`,
+`SameSite=Lax` cookie after a correct code is submitted. The code must be configured only as the
+Vercel `KIDS_ACCESS_CODE` environment variable for each intended environment. There is no client
+default or fallback, and a missing variable fails closed. Never put the value in source, generated
+Godot files, build output, documentation, logs, or Git.
+
+The access cookie authorizes every asset beneath both routes, including WASM, PCK, JavaScript,
+audio, manifests, icons, and service workers. Anyone with the family code can authorize a browser
+for 30 days, and an authorized PWA may retain game assets in that browser's offline cache. Use a
+private device, clear the site's cookies and storage to revoke local access, and rotate the Vercel
+environment value if the family code is disclosed. A rotation invalidates existing signed cookies.
+
+Common recovery steps:
+
+- A redirect loop or `not_configured` response means `KIDS_ACCESS_CODE` is absent from that Vercel
+  environment; configure it and create a new Preview deployment.
+- An `invalid_code` response means the submitted code did not match; retry without exposing the
+  value in logs or screenshots.
+- A stale or incomplete game should be re-exported, synced with the matching normal or legacy
+  command, rebuilt, and tested in a fresh browser session. Clear site storage when validating a
+  service-worker cache change.
+- Local Vite preview can verify the exported game and route files, but it does not emulate Vercel
+  middleware or the serverless access endpoint. Use a Vercel Preview deployment for the actual
+  redirect, cookie, and authorized-asset flow before production.
+
+Example: for an iPad Air 2 compatibility check, export both presets, run both sync commands, build
+the site, create an approved Vercel Preview deployment, enter the family code at `/kids-access`,
+then test `/kids-legacy/` on the physical iPad. Related features are **Website**, **Website
+Preview**, **Deployment**, and the Godot startup diagnostics shown over the game while it loads.
+
 ## Theme Sync
 
 1. Register the target project first.

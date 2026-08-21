@@ -105,7 +105,7 @@ test("the dispatcher file only routes; it imports every route module rather than
   assert.match(dispatcher, /__kcx_path/, "dispatcher must reverse the vercel.json __kcx_path rewrite");
 });
 
-test("vercel.json rewrites /api/:path* to /api/router before the SPA catch-all, and leaves NEXUS untouched", () => {
+test("vercel.json preserves Kids and NEXUS redirects and rewrites /api/:path* before the SPA catch-all", () => {
   const vercel = JSON.parse(source("vercel.json"));
   const rewrites = vercel.rewrites;
   const apiIndex = rewrites.findIndex((rule) => rule.source === "/api/:path*");
@@ -116,6 +116,8 @@ test("vercel.json rewrites /api/:path* to /api/router before the SPA catch-all, 
   assert.ok(apiIndex < spaIndex, "the /api rewrite must come before the SPA catch-all");
   assert.notEqual(nexusAssetsIndex, -1, "the /nexus/assets rewrite must be preserved");
   assert.deepEqual(vercel.redirects, [
+    { source: "/kids", destination: "/kids/", permanent: false },
+    { source: "/kids-legacy", destination: "/kids-legacy/", permanent: false },
     { source: "/nexus-cloud", destination: "/nexus", permanent: true },
     { source: "/nexus-cloud/portal", destination: "/nexus/portal", permanent: true },
   ]);
