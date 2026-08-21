@@ -1,6 +1,11 @@
 {
   "redirects": [
     {
+      "source": "/kids",
+      "destination": "/kids/",
+      "permanent": false
+    },
+    {
       "source": "/nexus-cloud",
       "destination": "/nexus",
       "permanent": true
@@ -23,6 +28,20 @@
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/kids/(.*).wasm",
+      "headers": [{ "key": "Content-Type", "value": "application/wasm" }]
+    },
+    {
+      "source": "/kids/index.service.worker.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    },
+    {
+      "source": "/kids/index.manifest.json",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
     }
   ]
 }
