@@ -101,6 +101,8 @@ await Promise.all([
       "server/snapcal-api/routes/calendars.ts",
       "server/snapcal-api/routes/events/index.ts",
       "server/snapcal-api/routes/events/[id].ts",
+      "server/snapcal-api/routes/auth/login.ts",
+      "server/snapcal-api/routes/auth/logout.ts",
     ],
     format: "cjs",
     outdir: "dist-electron/routes",

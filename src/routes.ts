@@ -17,6 +17,7 @@ export const publicRoutes = [
   "nexus-portal",
   "clips",
   "share",
+  "snapcal",
 ] as const;
 
 export type PublicRoute = (typeof publicRoutes)[number];
@@ -29,6 +30,7 @@ export const publicRoutePaths: Record<Exclude<PublicRoute, "home">, string> = {
   "nexus-portal": "/nexus/portal",
   clips: "/clips",
   share: "/c/:publicId",
+  snapcal: "/snapcal",
 };
 
 /** Legacy paths kept only as permanent redirects. Never link to these. */
@@ -57,6 +59,8 @@ export function resolvePublicRoute(pathname: string): PublicRoute {
       return "nexus-portal";
     case "/clips":
       return "clips";
+    case "/snapcal":
+      return "snapcal";
     default:
       return "home";
   }

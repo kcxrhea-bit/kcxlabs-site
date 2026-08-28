@@ -6,7 +6,7 @@ import {
   json,
   readJson,
   requestUrl,
-  requireDevice,
+  requireOwnerOrDevice,
   toNodeHandler,
 } from "../../../media-api/_lib/http.js";
 
@@ -22,7 +22,7 @@ import {
  * docs/snapcal-architecture.md's conflict-semantics section.
  */
 async function handler(request: Request): Promise<Response> {
-  const context = await requireDevice(request);
+  const context = await requireOwnerOrDevice(request);
   if (isResponse(context)) return context;
 
   const id = requestUrl(request).pathname.split("/").pop() ?? "";

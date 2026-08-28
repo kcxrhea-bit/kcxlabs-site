@@ -1,6 +1,6 @@
 import { calendarRepository, createDb } from "../_lib/db.js";
 import { generateCalendarId } from "../_lib/ids.js";
-import { internalError, isResponse, json, requireDevice, requireMethod, toNodeHandler } from "../../media-api/_lib/http.js";
+import { internalError, isResponse, json, requireMethod, requireOwnerOrDevice, toNodeHandler } from "../../media-api/_lib/http.js";
 
 /**
  * GET /api/snapcal/v1/calendars — the authenticated owner's calendars.
@@ -12,7 +12,7 @@ async function handler(request: Request): Promise<Response> {
   const methodError = requireMethod(request, "GET");
   if (methodError) return methodError;
 
-  const context = await requireDevice(request);
+  const context = await requireOwnerOrDevice(request);
   if (isResponse(context)) return context;
 
   try {

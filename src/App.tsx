@@ -4,6 +4,7 @@ import { DownloadsPage } from "./components/pages/DownloadsPage";
 import { ClipsPage, SharePage } from "./components/pages/MediaPublicPages";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
+import { SnapCalPage } from "./components/pages/SnapCalPage";
 import { EcosystemSection } from "./components/sections/EcosystemSection";
 import { FuturePreviewSection } from "./components/sections/FuturePreviewSection";
 import { HeroSection } from "./components/sections/HeroSection";
@@ -36,6 +37,8 @@ export default function App() {
         <ClipsPage />
       ) : route === "share" ? (
         <SharePage />
+      ) : route === "snapcal" ? (
+        <SnapCalPage />
       ) : (
         <>
           <HeroSection />

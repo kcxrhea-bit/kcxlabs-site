@@ -1,6 +1,6 @@
 /** Server-only HTTP primitives shared by every Media API handler. */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { bearerToken, hashDeviceToken, verifyDeviceTokenRecord } from "./auth.js";
+import { bearerToken, hashDeviceToken, verifyDeviceTokenRecord, verifySignedSession } from "./auth.js";
 import { authRepository, createDb } from "./db.js";
 import { loadAppConfig, redactSecrets, type AppConfig } from "./config.js";
 
@@ -73,6 +73,62 @@ export async function requireDevice(request: Request): Promise<ApiContext | Resp
 
 export function isResponse(value: ApiContext | Response): value is Response {
   return value instanceof Response;
+}
+
+/**
+ * Extracts one cookie's value from a `Cookie` request header. The Fetch
+ * `Request` type used throughout this codebase has no cookie-jar
+ * convenience, only the raw `Cookie` header, so this is the minimal parser
+ * needed rather than a dependency.
+ */
+export function parseCookie(header: string | null | undefined, name: string): string | null {
+  if (typeof header !== "string") return null;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator === -1) continue;
+    const key = part.slice(0, separator).trim();
+    if (key !== name) continue;
+    const value = part.slice(separator + 1).trim();
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+  return null;
+}
+
+/** Single owner constant, matching the literal used at `POST /api/auth/pair`. */
+export const SINGLE_OWNER_ID = "owner_kcx";
+
+/** Cookie name for the browser admin/SnapCal session, set by `POST /api/snapcal/v1/auth/login`. */
+export const SNAPCAL_SESSION_COOKIE = "snapcal_session";
+
+/**
+ * Resolves either a native device-token client (unchanged `requireDevice()`
+ * behavior, bearer token first) OR a browser session cookie set by
+ * `POST /api/snapcal/v1/auth/login` — so the exact same SnapCal CRUD routes
+ * serve both KsnapCalx/Buddy (bearer) and the SnapCal web calendar (cookie)
+ * without forking any route logic. Bearer token takes priority when both are
+ * present. Missing/invalid/expired credentials of either kind fail closed
+ * with the same 401 shape `requireDevice()` already returns.
+ */
+export async function requireOwnerOrDevice(request: Request): Promise<ApiContext | Response> {
+  const bearer = bearerToken(request.headers.get("authorization"));
+  if (bearer !== null) {
+    return requireDevice(request);
+  }
+
+  const config = loadAppConfig();
+  const cookieValue = parseCookie(request.headers.get("cookie"), SNAPCAL_SESSION_COOKIE);
+  if (cookieValue === null) return json(401, { error: "unauthorized" });
+
+  const ownerId = verifySignedSession(cookieValue, config.auth.sessionSecret);
+  if (ownerId === null || ownerId !== SINGLE_OWNER_ID) {
+    return json(401, { error: "unauthorized" });
+  }
+
+  return { config, ownerId };
 }
 
 /** Keep provider errors useful without ever reflecting a configured credential. */
