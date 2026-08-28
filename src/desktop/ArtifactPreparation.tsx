@@ -4,6 +4,7 @@ import type {
   DistributionPlan,
   DistributionProgress,
   DistributionProjectStatus,
+  DistributionSetupPlan,
   DistributionTarget,
   DistributionWorkflowResult,
 } from "../shared/desktop";
@@ -57,8 +58,11 @@ export function ArtifactPreparation({
   const [logs, setLogs] = useState<string[]>([]);
   const [result, setResult] =
     useState<DistributionWorkflowResult | null>(null);
+  const [setupPlan, setSetupPlan] =
+    useState<DistributionSetupPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [building, setBuilding] = useState(false);
+  const [applyingSetup, setApplyingSetup] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const readyTargets = useMemo(
@@ -95,6 +99,7 @@ export function ArtifactPreparation({
     setProgress(null);
     setLogs([]);
     setResult(null);
+    setSetupPlan(null);
     setError(null);
 
     if (!projectId) return;
@@ -214,6 +219,81 @@ export function ArtifactPreparation({
     }
   };
 
+  const refreshDistributionStatus = async () => {
+    if (!projectId) return;
+
+    const next =
+      await window.kcxDesktop!.getDistributionProjectStatus(
+        projectId,
+      );
+
+    setStatus(next);
+
+    setSelected(
+      next.targets
+        .filter((target) => target.canBuild)
+        .map((target) => target.target),
+    );
+  };
+  const previewSetup = async (target: DistributionTarget) => {
+    if (!projectId || building) return;
+
+    setError(null);
+    setSetupPlan(null);
+
+    try {
+      const next =
+        await window.kcxDesktop!.previewDistributionSetup(
+          projectId,
+          target,
+        );
+
+      setSetupPlan(next);
+      setMessage(next.message);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to prepare setup preview.";
+
+      setError(message);
+      setMessage(message);
+    }
+  };
+  const applySetup = async () => {
+    if (!projectId || !setupPlan || applyingSetup || building) return;
+
+    setApplyingSetup(true);
+    setError(null);
+
+    try {
+      const response =
+        await window.kcxDesktop!.applyDistributionSetup(
+          projectId,
+          setupPlan.target,
+        );
+
+      setMessage(response.message);
+
+      if (!response.ok) {
+        setError(response.message);
+        return;
+      }
+
+      setSetupPlan(null);
+      await refreshDistributionStatus();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to apply distribution setup.";
+
+      setError(message);
+      setMessage(message);
+    } finally {
+      setApplyingSetup(false);
+    }
+  };
   const openFolder = async () => {
     if (!projectId) return;
 
@@ -233,12 +313,42 @@ export function ArtifactPreparation({
         now and what still needs packaging setup.
       </p>
 
-      <label>
-        Registered project
+      <div
+        style={{
+          marginTop: "1rem",
+          maxWidth: "420px",
+        }}
+      >
+        <label
+          htmlFor="distribution-project"
+          style={{
+            display: "block",
+            marginBottom: "0.4rem",
+            fontSize: "0.8rem",
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            opacity: 0.75,
+          }}
+        >
+          Registered project
+        </label>
+
         <select
+          id="distribution-project"
           value={projectId}
           disabled={building}
           onChange={(event) => setProjectId(event.target.value)}
+          style={{
+            width: "100%",
+            padding: "0.75rem 2.5rem 0.75rem 0.85rem",
+            border: "1px solid rgba(255,255,255,0.18)",
+            borderRadius: "6px",
+            background: "rgba(10,10,10,0.95)",
+            color: "inherit",
+            fontSize: "0.95rem",
+            cursor: building ? "not-allowed" : "pointer",
+          }}
         >
           <option value="">Select registered project</option>
 
@@ -252,7 +362,7 @@ export function ArtifactPreparation({
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
       <div
         style={{
@@ -419,10 +529,13 @@ export function ArtifactPreparation({
                   {target.canConfigure && (
                     <button
                       type="button"
-                      disabled
-                      title="Automatic target configuration is the next distribution milestone."
+                      className="desktop-action"
+                      disabled={building}
+                      onClick={() =>
+                        void previewSetup(target.target)
+                      }
                     >
-                      Configure
+                      Preview setup
                     </button>
                   )}
                 </article>
@@ -445,6 +558,94 @@ export function ArtifactPreparation({
         </>
       )}
 
+      {setupPlan && (
+        <div
+          className="desktop-card"
+          style={{
+            marginTop: "1.25rem",
+            padding: "1rem",
+          }}
+        >
+          <p className="desktop-kicker">
+            Setup preview
+          </p>
+
+          <h3>
+            {setupPlan.projectName} —{" "}
+            {targetInfo[setupPlan.target].label}
+          </h3>
+
+          <p>
+            <strong>
+              {setupPlan.supported
+                ? "KCx Labs can prepare this target"
+                : "Automatic setup is not available"}
+            </strong>
+          </p>
+
+          <p>{setupPlan.message}</p>
+
+          <p>
+            <strong>Detected type</strong>
+            <br />
+            <code>{setupPlan.detectedKind}</code>
+          </p>
+
+          <p>
+            <strong>Configuration root</strong>
+            <br />
+            <code>{setupPlan.detectedRoot}</code>
+          </p>
+
+          <h4>Proposed changes</h4>
+
+          {setupPlan.changes.length ? (
+            <ul>
+              {setupPlan.changes.map((change, index) => (
+                <li key={`${change.kind}-${change.path}-${index}`}>
+                  <strong>
+                    {change.kind.toUpperCase()}
+                  </strong>{" "}
+                  <code>{change.path}</code>
+                  <br />
+                  {change.description}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No project changes proposed.</p>
+          )}
+
+          {setupPlan.warnings.length > 0 && (
+            <>
+              <h4>Before applying</h4>
+              <ul>
+                {setupPlan.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {setupPlan.supported && (
+            <>
+              <p style={{ fontSize: "0.8rem", opacity: 0.8 }}>
+                Preview only. No project files have been modified yet.
+                Applying this setup requires explicit approval.
+              </p>
+
+              <button
+                type="button"
+                className="desktop-action"
+                disabled={applyingSetup || building}
+                onClick={() => void applySetup()}
+              >
+                {applyingSetup ? "Applying setup…" : "Apply setup"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {plan && (
         <div
           className="desktop-card"

@@ -28,6 +28,8 @@ export type DesktopApi = {
   onDistributionProgress(listener: (progress: DistributionProgress) => void): () => void;
   getDistributionProjectStatus(projectId: string): Promise<DistributionProjectStatus>;
   runDistributionWorkflow(request: DistributionWorkflowRequest): Promise<DistributionWorkflowResult>;
+  previewDistributionSetup(projectId: string, target: DistributionTarget): Promise<DistributionSetupPlan>;
+  applyDistributionSetup(projectId: string, target: DistributionTarget): Promise<DistributionSetupResult>;
   previewRelease(draft: ReleaseDraft): Promise<ReleasePreview>;
   publishRelease(draft: ReleaseDraft): Promise<OperationResult>;
   getActivity(): Promise<ActivityEntry[]>;
@@ -235,4 +237,26 @@ export type DistributionWorkflowResult = {
   projectId: string;
   completedActions: DistributionAction[];
   artifactPaths: string[];
+};
+export type DistributionSetupChange = {
+  kind: "create" | "modify" | "install";
+  path: string;
+  description: string;
+};
+
+export type DistributionSetupPlan = {
+  projectId: string;
+  projectName: string;
+  target: DistributionTarget;
+  supported: boolean;
+  detectedRoot: string;
+  detectedKind: string;
+  changes: DistributionSetupChange[];
+  warnings: string[];
+  message: string;
+};
+export type DistributionSetupResult = OperationResult & {
+  projectId: string;
+  target: DistributionTarget;
+  backupPath: string | null;
 };

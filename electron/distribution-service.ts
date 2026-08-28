@@ -5,7 +5,9 @@ import {
   mkdir,
   readFile,
   readdir,
+  rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -19,6 +21,7 @@ import type {
 } from "../src/shared/desktop";
 
 type PackageJson = {
+  version?: string;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -45,6 +48,55 @@ async function readPackageJson(root: string): Promise<PackageJson | null> {
   }
 }
 
+function extractExactVersion(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const match = value.match(
+    /\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/,
+  );
+
+  return match?.[0] ?? null;
+}
+async function readAndroidVersion(
+  root: string,
+): Promise<string | null> {
+  const candidates = [
+    join(root, "app", "build.gradle.kts"),
+    join(root, "app", "build.gradle"),
+    join(root, "android", "app", "build.gradle.kts"),
+    join(root, "android", "app", "build.gradle"),
+  ];
+
+  for (const candidate of candidates) {
+    if (!(await exists(candidate))) continue;
+
+    try {
+      const text = await readFile(candidate, "utf8");
+
+      const versionName =
+        text.match(
+          /versionName\s*(?:=)?\s*["']([^"']+)["']/,
+        )?.[1];
+
+      if (versionName) {
+        return versionName.trim();
+      }
+
+      const versionCode =
+        text.match(
+          /versionCode\s*(?:=)?\s*(\d+)/,
+        )?.[1];
+
+      if (versionCode) {
+        return `code-${versionCode}`;
+      }
+    } catch {
+      // Try the next Gradle file.
+    }
+  }
+
+  return null;
+}
 function hasScript(pkg: PackageJson | null, name: string): boolean {
   return Boolean(pkg?.scripts?.[name]);
 }
@@ -83,7 +135,10 @@ async function walkFiles(root: string): Promise<string[]> {
 }
 
 export class DistributionService {
-  constructor(private readonly appRoot: string) {}
+  constructor(
+    private readonly appRoot: string,
+    private readonly userData: string,
+  ) {}
 
   async capabilities(
     project: CatalogProject | undefined,
@@ -97,12 +152,20 @@ export class DistributionService {
     const root = resolve(project.folder);
     const pkg = await readPackageJson(root);
 
+    const desktopRoot = join(root, "apps", "desktop");
+    const desktopPkg = await readPackageJson(desktopRoot);
+
     const electron =
       Boolean(pkg?.dependencies?.electron) ||
       Boolean(pkg?.devDependencies?.electron) ||
+      Boolean(desktopPkg?.dependencies?.electron) ||
+      Boolean(desktopPkg?.devDependencies?.electron) ||
       (await exists(join(root, "electron-builder.yml"))) ||
       (await exists(join(root, "electron-builder.yaml"))) ||
-      (await exists(join(root, "electron-builder.json")));
+      (await exists(join(root, "electron-builder.json"))) ||
+      (await exists(join(desktopRoot, "electron-builder.yml"))) ||
+      (await exists(join(desktopRoot, "electron-builder.yaml"))) ||
+      (await exists(join(desktopRoot, "electron-builder.json")));
 
     const capacitorRoot =
       (await exists(join(root, "capacitor.config.ts"))) ||
@@ -124,21 +187,39 @@ export class DistributionService {
 
     const webScript = firstScript(pkg, ["build:web", "build"]);
 
-    const executableScript = firstScript(pkg, [
-      "package",
-      "make",
-      "dist",
-      "build:win",
-      "electron:build",
-    ]);
+    const executableScript =
+      firstScript(pkg, [
+        "package",
+        "make",
+        "dist",
+        "build:win",
+        "electron:build",
+        "package:win",
+      ]) ??
+      firstScript(desktopPkg, [
+        "package",
+        "make",
+        "dist",
+        "build:win",
+        "electron:build",
+        "package:win",
+      ]);
 
-    const installerScript = firstScript(pkg, [
-      "dist",
-      "make",
-      "build:win",
-      "installer",
-      "package:win",
-    ]);
+    const installerScript =
+      firstScript(pkg, [
+        "dist",
+        "make",
+        "build:win",
+        "installer",
+        "package:win",
+      ]) ??
+      firstScript(desktopPkg, [
+        "dist",
+        "make",
+        "build:win",
+        "installer",
+        "package:win",
+      ]);
 
     return {
       projectId: project.id,
@@ -165,6 +246,8 @@ export class DistributionService {
 
     const root = resolve(project.folder);
     const pkg = await readPackageJson(root);
+    const desktopRoot = join(root, "apps", "desktop");
+    const desktopPkg = await readPackageJson(desktopRoot);
     const caps = await this.capabilities(project);
 
     const unsupported = (): DistributionPlan => ({
@@ -232,13 +315,25 @@ export class DistributionService {
       }
 
       case "executable": {
-        const script = firstScript(pkg, [
+        const rootScript = firstScript(pkg, [
           "package",
           "make",
           "dist",
           "build:win",
           "electron:build",
+          "package:win",
         ]);
+
+        const workspaceScript = firstScript(desktopPkg, [
+          "package",
+          "make",
+          "dist",
+          "build:win",
+          "electron:build",
+          "package:win",
+        ]);
+
+        const script = rootScript ?? workspaceScript;
 
         if (!script) return unsupported();
 
@@ -247,7 +342,7 @@ export class DistributionService {
           projectName: project.name,
           target,
           supported: true,
-          workingDirectory: root,
+          workingDirectory: rootScript ? root : desktopRoot,
           command: "npm.cmd",
           args: ["run", script],
           expectedArtifacts: [
@@ -260,13 +355,23 @@ export class DistributionService {
       }
 
       case "installer": {
-        const script = firstScript(pkg, [
+        const rootScript = firstScript(pkg, [
+          "installer",
           "dist",
           "make",
           "build:win",
-          "installer",
           "package:win",
         ]);
+
+        const workspaceScript = firstScript(desktopPkg, [
+          "installer",
+          "dist",
+          "make",
+          "build:win",
+          "package:win",
+        ]);
+
+        const script = rootScript ?? workspaceScript;
 
         if (!script) return unsupported();
 
@@ -275,7 +380,7 @@ export class DistributionService {
           projectName: project.name,
           target,
           supported: true,
-          workingDirectory: root,
+          workingDirectory: rootScript ? root : desktopRoot,
           command: "npm.cmd",
           args: ["run", script],
           expectedArtifacts: [
@@ -509,7 +614,7 @@ export class DistributionService {
       emit("collecting", 75, "Locating generated artifacts.");
 
       const generated = await this.collectArtifacts(
-        project.folder,
+        plan.workingDirectory,
         target,
         startedAt,
       );
@@ -521,10 +626,57 @@ export class DistributionService {
         target === "installer" ||
         target === "apk"
       ) {
-        emit("staging", 85, "Copying generated artifacts to staging.");
+        emit(
+          "staging",
+          85,
+          "Replacing the staged artifact for this target and version.",
+        );
+
+        const buildPackage =
+          await readPackageJson(plan.workingDirectory);
+
+        const projectPackage =
+          await readPackageJson(project.folder);
+
+        const androidVersion =
+          target === "apk"
+            ? await readAndroidVersion(
+                plan.workingDirectory,
+              )
+            : null;
+
+        const version =
+          androidVersion ??
+          buildPackage?.version ??
+          projectPackage?.version ??
+          "unversioned";
+
+        const versionStagingRoot = join(
+          stagingRoot,
+          target,
+          version,
+        );
+
+        /*
+         * Remove only the previous staged copy of this exact
+         * project + target + version. Different versions and
+         * different targets are preserved.
+         */
+        await rm(versionStagingRoot, {
+          recursive: true,
+          force: true,
+        });
+
+        await mkdir(versionStagingRoot, {
+          recursive: true,
+        });
 
         for (const source of generated) {
-          const destination = join(stagingRoot, basename(source));
+          const destination = join(
+            versionStagingRoot,
+            basename(source),
+          );
+
           await copyFile(source, destination);
           staged.push(destination);
         }
@@ -566,6 +718,460 @@ export class DistributionService {
     }
   }
 
+  async previewSetup(
+    project: CatalogProject | undefined,
+    target: DistributionTarget,
+  ): Promise<import("../src/shared/desktop").DistributionSetupPlan> {
+    if (!project || project.folderStatus === "missing") {
+      throw new Error("Select a registered project with an available folder.");
+    }
+
+    const root = resolve(project.folder);
+
+    if (!["executable", "installer", "apk"].includes(target)) {
+      return {
+        projectId: project.id,
+        projectName: project.name,
+        target,
+        supported: false,
+        detectedRoot: root,
+        detectedKind: "not-configurable",
+        changes: [],
+        warnings: [],
+        message: `${target} does not require setup planning.`,
+      };
+    }
+
+    const workspaceRoot = join(root, "apps", "desktop");
+    const workspacePkg = await readPackageJson(workspaceRoot);
+    const rootPkg = await readPackageJson(root);
+
+    const electronRoot =
+      Boolean(rootPkg?.dependencies?.electron) ||
+      Boolean(rootPkg?.devDependencies?.electron);
+
+    const electronWorkspace =
+      Boolean(workspacePkg?.dependencies?.electron) ||
+      Boolean(workspacePkg?.devDependencies?.electron);
+
+    if (target === "executable" || target === "installer") {
+      if (!electronRoot && !electronWorkspace) {
+        return {
+          projectId: project.id,
+          projectName: project.name,
+          target,
+          supported: false,
+          detectedRoot: root,
+          detectedKind: "non-electron",
+          changes: [],
+          warnings: [
+            "No Electron application was detected at the project root or apps/desktop.",
+          ],
+          message:
+            "KCx Labs cannot safely prepare Windows Electron packaging for this project yet.",
+        };
+      }
+
+      const packageRoot = electronWorkspace ? workspaceRoot : root;
+
+      return {
+        projectId: project.id,
+        projectName: project.name,
+        target,
+        supported: true,
+        detectedRoot: packageRoot,
+        detectedKind: electronWorkspace
+          ? "electron-workspace"
+          : "electron-project",
+        changes: [
+          {
+            kind: "install",
+            path: packageRoot,
+            description:
+              "Add electron-builder as a development packaging dependency.",
+          },
+          {
+            kind: "modify",
+            path: join(packageRoot, "package.json"),
+            description:
+              target === "installer"
+                ? "Add Windows installer packaging scripts and electron-builder configuration."
+                : "Add Windows executable packaging scripts and electron-builder configuration.",
+          },
+          {
+            kind: "create",
+            path: join(packageRoot, "release"),
+            description:
+              "Use a dedicated release output directory for generated Windows artifacts.",
+          },
+        ],
+        warnings: [
+          "Setup would modify the selected project's package configuration.",
+          "Existing scripts and package metadata must be preserved.",
+          "KCx Labs must create a backup before applying changes.",
+        ],
+        message:
+          target === "installer"
+            ? "Electron detected. KCx Labs can prepare Windows installer packaging."
+            : "Electron detected. KCx Labs can prepare Windows executable packaging.",
+      };
+    }
+
+    const capacitorConfig =
+      (await exists(join(root, "capacitor.config.ts"))) ||
+      (await exists(join(root, "capacitor.config.js"))) ||
+      (await exists(join(root, "capacitor.config.json")));
+
+    const nativeAndroid =
+      (await exists(join(root, "gradlew.bat"))) ||
+      (await exists(join(root, "android", "gradlew.bat")));
+
+    if (nativeAndroid || capacitorConfig) {
+      return {
+        projectId: project.id,
+        projectName: project.name,
+        target,
+        supported: true,
+        detectedRoot: root,
+        detectedKind: nativeAndroid
+          ? "android-project"
+          : "capacitor-project",
+        changes: [
+          {
+            kind: "modify",
+            path: root,
+            description:
+              "Complete or normalize the existing Android packaging configuration.",
+          },
+        ],
+        warnings: [
+          "Existing Android configuration must be preserved.",
+        ],
+        message:
+          "Existing Android packaging evidence was detected and can be prepared.",
+      };
+    }
+
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      target,
+      supported: true,
+      detectedRoot: root,
+      detectedKind: "web-or-electron-without-android",
+      changes: [
+        {
+          kind: "install",
+          path: root,
+          description:
+            "Add Capacitor tooling required to create an Android application target.",
+        },
+        {
+          kind: "create",
+          path: join(root, "capacitor.config.ts"),
+          description:
+            "Create Capacitor application configuration.",
+        },
+        {
+          kind: "create",
+          path: join(root, "android"),
+          description:
+            "Generate the Android project and Gradle wrapper.",
+        },
+        {
+          kind: "modify",
+          path: join(root, "package.json"),
+          description:
+            "Add Android sync/build scripts without removing existing scripts.",
+        },
+      ],
+      warnings: [
+        "Android setup would add a new platform directory to the selected project.",
+        "Application ID/package name must be chosen before setup is applied.",
+        "The project's web build output must be identified before Capacitor can be finalized.",
+        "KCx Labs must create a backup before applying changes.",
+      ],
+      message:
+        "No Android target exists yet. KCx Labs can prepare a Capacitor Android target after review.",
+    };
+  }
+  async applySetup(
+    project: CatalogProject,
+    target: DistributionTarget,
+  ): Promise<import("../src/shared/desktop").DistributionSetupResult> {
+    if (target !== "executable" && target !== "installer") {
+      return {
+        ok: false,
+        message:
+          "Automatic setup is currently implemented for Windows EXE/Installer targets only.",
+        projectId: project.id,
+        target,
+        backupPath: null,
+      };
+    }
+
+    const root = resolve(project.folder);
+    const desktopRoot = join(root, "apps", "desktop");
+
+    const desktopPkgPath = join(desktopRoot, "package.json");
+    const rootPkgPath = join(root, "package.json");
+    const lockPath = join(root, "package-lock.json");
+
+    const desktopPkg = await readPackageJson(desktopRoot);
+    const rootPkg = await readPackageJson(root);
+
+    const electronWorkspace =
+      Boolean(desktopPkg?.dependencies?.electron) ||
+      Boolean(desktopPkg?.devDependencies?.electron);
+
+    const electronRoot =
+      Boolean(rootPkg?.dependencies?.electron) ||
+      Boolean(rootPkg?.devDependencies?.electron);
+
+    if (!electronWorkspace && !electronRoot) {
+      return {
+        ok: false,
+        message: "No Electron project or Electron desktop workspace was detected.",
+        projectId: project.id,
+        target,
+        backupPath: null,
+      };
+    }
+
+    const packageRoot = electronWorkspace ? desktopRoot : root;
+    const packagePath = electronWorkspace
+      ? desktopPkgPath
+      : rootPkgPath;
+
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-");
+
+    const backupRoot = join(
+      this.userData,
+      "distribution-backups",
+      timestamp,
+      project.slug,
+    );
+
+    await mkdir(backupRoot, { recursive: true });
+
+    const packageBackup = join(
+      backupRoot,
+      electronWorkspace
+        ? "apps-desktop-package.json"
+        : "package.json",
+    );
+
+    await copyFile(packagePath, packageBackup);
+
+    if (await exists(lockPath)) {
+      await copyFile(
+        lockPath,
+        join(backupRoot, "package-lock.json"),
+      );
+    }
+
+    try {
+      const parsed = JSON.parse(
+        await readFile(packagePath, "utf8"),
+      ) as Record<string, unknown> & {
+        scripts?: Record<string, string>;
+        build?: Record<string, unknown>;
+      };
+
+      const declaredElectron =
+        (
+          parsed.devDependencies as
+            | Record<string, string>
+            | undefined
+        )?.electron ??
+        (
+          parsed.dependencies as
+            | Record<string, string>
+            | undefined
+        )?.electron;
+
+      const localInstalledElectron =
+        await readPackageJson(
+          join(packageRoot, "node_modules", "electron"),
+        );
+
+      const workspaceInstalledElectron =
+        packageRoot !== root
+          ? await readPackageJson(
+              join(root, "node_modules", "electron"),
+            )
+          : null;
+
+      const electronVersion =
+        localInstalledElectron?.version ??
+        workspaceInstalledElectron?.version ??
+        extractExactVersion(declaredElectron);
+
+      if (!electronVersion) {
+        throw new Error(
+          "KCx Labs could not determine an exact Electron version for packaging.",
+        );
+      }
+
+      const scripts = {
+        ...(parsed.scripts ?? {}),
+      };
+
+      /*
+       * Both targets are configured together. One setup pass should make
+       * Windows portable EXE and installer production available.
+       */
+      scripts["package:win"] =
+        "npm run build && electron-builder --win portable";
+
+      scripts["installer"] =
+        "npm run build && electron-builder --win nsis";
+
+      parsed.scripts = scripts;
+
+      parsed.productName =
+        typeof parsed.productName === "string"
+          ? parsed.productName
+          : project.name;
+
+      parsed.build = {
+        ...(parsed.build ?? {}),
+        appId: `org.kcxlabs.${project.slug.replace(/[^a-z0-9]/g, "")}`,
+        productName: project.name,
+        electronVersion,
+        directories: {
+          output: "release",
+        },
+        files: [
+          "dist/**/*",
+          "package.json",
+        ],
+        win: {
+          target: [
+            "portable",
+            "nsis",
+          ],
+        },
+        nsis: {
+          oneClick: false,
+          allowToChangeInstallationDirectory: true,
+        },
+      };
+
+      await writeFile(
+        packagePath,
+        `${JSON.stringify(parsed, null, 2)}\n`,
+        "utf8",
+      );
+
+      const installArgs = electronWorkspace
+        ? [
+            "install",
+            "--save-dev",
+            "electron-builder",
+            "-w",
+            "apps/desktop",
+          ]
+        : [
+            "install",
+            "--save-dev",
+            "electron-builder",
+          ];
+
+      const install = await this.runCommand(
+        "npm.cmd",
+        installArgs,
+        root,
+      );
+
+      if (!install.ok) {
+        await copyFile(packageBackup, packagePath);
+
+        if (
+          (await exists(join(backupRoot, "package-lock.json"))) &&
+          (await exists(lockPath))
+        ) {
+          await copyFile(
+            join(backupRoot, "package-lock.json"),
+            lockPath,
+          );
+        }
+
+        return {
+          ok: false,
+          message:
+            `Packaging dependency installation failed. KCx Labs restored the modified package files. ${install.message}`,
+          output: install.output,
+          projectId: project.id,
+          target,
+          backupPath: backupRoot,
+        };
+      }
+
+      /*
+       * Validate the existing application build before reporting setup
+       * successful. This does not package yet.
+       */
+      const build = await this.runCommand(
+        "npm.cmd",
+        ["run", "build"],
+        root,
+      );
+
+      if (!build.ok) {
+        return {
+          ok: false,
+          message:
+            "Windows packaging was configured, but the project build failed. Review build output before packaging.",
+          output: build.output,
+          projectId: project.id,
+          target,
+          backupPath: backupRoot,
+        };
+      }
+
+      return {
+        ok: true,
+        message:
+          "Windows packaging configured successfully. EXE and Installer targets are ready to build.",
+        output: build.output,
+        projectId: project.id,
+        target,
+        backupPath: backupRoot,
+      };
+    } catch (error) {
+      try {
+        await copyFile(packageBackup, packagePath);
+
+        const lockBackup = join(
+          backupRoot,
+          "package-lock.json",
+        );
+
+        if (
+          (await exists(lockBackup)) &&
+          (await exists(lockPath))
+        ) {
+          await copyFile(lockBackup, lockPath);
+        }
+      } catch {
+        // Preserve the original setup failure below.
+      }
+
+      return {
+        ok: false,
+        message:
+          error instanceof Error
+            ? `Setup failed: ${error.message}`
+            : "Windows packaging setup failed.",
+        projectId: project.id,
+        target,
+        backupPath: backupRoot,
+      };
+    }
+  }
   async projectStatus(
     project: CatalogProject | undefined,
   ): Promise<import("../src/shared/desktop").DistributionProjectStatus> {
@@ -779,9 +1385,36 @@ export class DistributionService {
       for (const file of await walkFiles(candidateRoot)) {
         if (!allowedExtensions.has(extname(file).toLowerCase())) continue;
 
+        const normalizedFile = file.toLowerCase();
+        const fileName = basename(file).toLowerCase();
+
+        if (
+          target === "executable" &&
+          (
+            normalizedFile.includes("win-unpacked") ||
+            normalizedFile.includes("win-ia32-unpacked") ||
+            normalizedFile.includes("win-arm64-unpacked") ||
+            fileName === "elevate.exe"
+          )
+        ) {
+          continue;
+        }
+
+        if (
+          target === "installer" &&
+          extname(file).toLowerCase() === ".exe" &&
+          !fileName.includes("setup") &&
+          !fileName.includes("installer")
+        ) {
+          continue;
+        }
+
         const info = await stat(file);
 
-        if (info.mtimeMs >= startedAt - 2000) {
+        if (
+          target === "apk" ||
+          info.mtimeMs >= startedAt - 2000
+        ) {
           matches.push(file);
         }
       }

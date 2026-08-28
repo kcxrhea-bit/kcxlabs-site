@@ -11,3 +11,5 @@ dist-electron/
 coverage/
 release/
 *.log
+public/downloads/staged/
+src/desktop/*.sidebar-scroll-backup-*

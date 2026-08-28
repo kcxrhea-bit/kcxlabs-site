@@ -399,3 +399,88 @@
 @media (max-width: 860px) { .desktop-app { grid-template-columns: 1fr; }.desktop-nav { display: none; }.desktop-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }.desktop-workspace { padding-top: 1.5rem; }.desktop-art { background-position: 62% center; } }
 @media (max-width: 720px) { .media-upload-grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .desktop-grid { grid-template-columns: 1fr; }.desktop-header, .desktop-primary-card, .desktop-system-card, .media-online-item { align-items: flex-start; flex-direction: column; }.desktop-status { display: none; } }
+
+/* ============================================================
+   KCx Labs desktop shell scrolling
+   Sidebar and workspace scroll independently.
+   ============================================================ */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+.desktop-app {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-nav {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-nav > nav {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 122, 26, 0.65) rgba(255, 255, 255, 0.035);
+}
+
+.desktop-nav > nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.desktop-nav > nav::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.desktop-nav > nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 122, 26, 0.55);
+  border-radius: 999px;
+}
+
+.desktop-nav > nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 122, 26, 0.85);
+}
+
+.desktop-workspace {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(126, 134, 145, 0.75) rgba(5, 5, 6, 0.7);
+}
+
+.desktop-workspace::-webkit-scrollbar {
+  width: 11px;
+}
+
+.desktop-workspace::-webkit-scrollbar-track {
+  background: rgba(5, 5, 6, 0.72);
+}
+
+.desktop-workspace::-webkit-scrollbar-thumb {
+  background: rgba(126, 134, 145, 0.68);
+  border: 2px solid rgba(5, 5, 6, 0.72);
+  border-radius: 999px;
+}
+
+.desktop-workspace::-webkit-scrollbar-thumb:hover {
+  background: rgba(174, 179, 186, 0.85);
+}

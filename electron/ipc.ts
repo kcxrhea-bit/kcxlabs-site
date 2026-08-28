@@ -21,6 +21,8 @@ export const desktopIpcChannels = {
   distributionProgress: "distribution:progress",
   getDistributionProjectStatus: "distribution:project-status",
   runDistributionWorkflow: "distribution:workflow",
+  previewDistributionSetup: "distribution:setup-preview",
+  applyDistributionSetup: "distribution:setup-apply",
   previewRelease: "release:preview",
   publishRelease: "release:publish",
   getActivity: "activity:list",

@@ -58,7 +58,10 @@ app.whenReady().then(() => {
   const catalog = createCatalogService(app.getPath("userData"));
   const platform = new PlatformService(app.getAppPath(), app.getPath("userData"));
   const media = new MediaService(app.getPath("userData"));
-  const distribution = new DistributionService(app.getAppPath());
+  const distribution = new DistributionService(
+    app.getAppPath(),
+    app.getPath("userData"),
+  );
   ipcMain.handle(desktopIpcChannels.listProjects, () => catalog.list());
   ipcMain.handle(desktopIpcChannels.addProject, (_event, input: NewCatalogProject) => catalog.add(input));
   ipcMain.handle(desktopIpcChannels.chooseProjectFolder, async () => {
@@ -131,6 +134,69 @@ app.whenReady().then(() => {
       return distribution.run(project, target, (progress) => {
         event.sender.send(desktopIpcChannels.distributionProgress, progress);
       });
+    },
+  );
+  ipcMain.handle(
+    desktopIpcChannels.previewDistributionSetup,
+    async (_event, id: string, target: DistributionTarget) => {
+      const project = (await catalog.list()).find(
+        (candidate) => candidate.id === id,
+      );
+      return distribution.previewSetup(project, target);
+    },
+  );
+  ipcMain.handle(
+    desktopIpcChannels.applyDistributionSetup,
+    async (_event, id: string, target: DistributionTarget) => {
+      const project = (await catalog.list()).find(
+        (candidate) => candidate.id === id,
+      );
+
+      if (!project || project.folderStatus === "missing") {
+        return {
+          ok: false,
+          message: "Select a registered project with an available folder.",
+          projectId: id,
+          target,
+          backupPath: null,
+        };
+      }
+
+      const plan = await distribution.previewSetup(project, target);
+
+      if (!plan.supported) {
+        return {
+          ok: false,
+          message: plan.message,
+          projectId: project.id,
+          target,
+          backupPath: null,
+        };
+      }
+
+      const confirmation = await dialog.showMessageBox({
+        type: "warning",
+        buttons: ["Cancel", "Apply setup"],
+        defaultId: 0,
+        cancelId: 0,
+        title: "Apply distribution setup?",
+        message: `Configure ${project.name} for ${target}?`,
+        detail:
+          "KCx Labs will back up every file it modifies before changing the project. Existing scripts and metadata will be preserved.",
+        noLink: true,
+      });
+
+      if (confirmation.response !== 1) {
+        return {
+          ok: false,
+          message: "Distribution setup cancelled. No project files were modified.",
+          projectId: project.id,
+          target,
+          backupPath: null,
+        };
+      }
+
+      return distribution.applySetup(project, target);
     },
   );
   ipcMain.handle(

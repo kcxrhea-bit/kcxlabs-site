@@ -46,7 +46,20 @@ const desktopApi: DesktopApi = {
     ipcRenderer.invoke(
       desktopIpcChannels.runDistributionWorkflow,
       request,
-    ),  previewRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.previewRelease, draft),
+    ),
+  previewDistributionSetup: (projectId, target) =>
+    ipcRenderer.invoke(
+      desktopIpcChannels.previewDistributionSetup,
+      projectId,
+      target,
+    ),
+  applyDistributionSetup: (projectId, target) =>
+    ipcRenderer.invoke(
+      desktopIpcChannels.applyDistributionSetup,
+      projectId,
+      target,
+    ),
+  previewRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.previewRelease, draft),
   publishRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.publishRelease, draft),
   getActivity: () => ipcRenderer.invoke(desktopIpcChannels.getActivity),
   getDeploymentReadiness: () => ipcRenderer.invoke(desktopIpcChannels.getDeploymentReadiness),
