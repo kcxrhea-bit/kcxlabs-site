@@ -1,5 +1,6 @@
 import { AppShell } from "./components/layout/AppShell";
 import { BetaPage } from "./components/pages/BetaPage";
+import { DownloadsPage } from "./components/pages/DownloadsPage";
 import { ClipsPage, SharePage } from "./components/pages/MediaPublicPages";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
@@ -25,6 +26,8 @@ export default function App() {
     <AppShell>
       {route === "beta" ? (
         <BetaPage />
+      ) : route === "downloads" ? (
+        <DownloadsPage />
       ) : route === "nexus" ? (
         <NexusCloudPage />
       ) : route === "nexus-portal" ? (

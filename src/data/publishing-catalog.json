@@ -308,7 +308,18 @@
       "addedAt": "2026-07-19T03:55:25.902Z"
     }
   ],
-  "releases": [],
+  "releases": [
+    {
+      "projectSlug": "ksnapcalx",
+      "version": "0.1.0",
+      "title": "KsnapCalx 0.1.0",
+      "channel": "stable",
+      "file": "downloads/releases/ksnapcalx/KsnapCalx Setup 0.1.0.exe",
+      "bytes": 104736454,
+      "sha256": "781af6c9fa04bd3e338ba9213fdb2f3b5702f07163c07ded5fc2d3bb10c1caa4",
+      "publishedAt": "2026-08-28T15:35:25.554Z"
+    }
+  ],
   "categories": [],
   "featuredProjectSlugs": [],
   "archivedProjectSlugs": []

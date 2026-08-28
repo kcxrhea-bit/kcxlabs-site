@@ -12,6 +12,7 @@
 export const publicRoutes = [
   "home",
   "beta",
+  "downloads",
   "nexus",
   "nexus-portal",
   "clips",
@@ -23,6 +24,7 @@ export type PublicRoute = (typeof publicRoutes)[number];
 /** Canonical path each route is served from. Use these for every internal link. */
 export const publicRoutePaths: Record<Exclude<PublicRoute, "home">, string> = {
   beta: "/beta",
+  downloads: "/downloads",
   nexus: "/nexus",
   "nexus-portal": "/nexus/portal",
   clips: "/clips",
@@ -45,6 +47,8 @@ export function resolvePublicRoute(pathname: string): PublicRoute {
   switch (normalized) {
     case "/beta":
       return "beta";
+    case "/downloads":
+      return "downloads";
     case "/nexus":
     case "/nexus-cloud":
       return "nexus";

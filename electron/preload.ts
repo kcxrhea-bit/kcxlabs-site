@@ -62,8 +62,29 @@ const desktopApi: DesktopApi = {
   previewRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.previewRelease, draft),
   publishRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.publishRelease, draft),
   getActivity: () => ipcRenderer.invoke(desktopIpcChannels.getActivity),
-  getDeploymentReadiness: () => ipcRenderer.invoke(desktopIpcChannels.getDeploymentReadiness),
-  buildWebsite: () => ipcRenderer.invoke(desktopIpcChannels.buildWebsite),
+  getDeploymentReadiness: () =>
+    ipcRenderer.invoke(desktopIpcChannels.getDeploymentReadiness),
+
+  deployWebsite: () =>
+    ipcRenderer.invoke(desktopIpcChannels.deployWebsite),
+
+  onDeploymentProgress: (listener) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      progress: Parameters<typeof listener>[0],
+    ) => listener(progress);
+
+    ipcRenderer.on(desktopIpcChannels.deploymentProgress, handler);
+
+    return () =>
+      ipcRenderer.removeListener(
+        desktopIpcChannels.deploymentProgress,
+        handler,
+      );
+  },
+
+  buildWebsite: () =>
+    ipcRenderer.invoke(desktopIpcChannels.buildWebsite),
   getPreviewStatus: () => ipcRenderer.invoke(desktopIpcChannels.getPreviewStatus),
   startWebsitePreview: () => ipcRenderer.invoke(desktopIpcChannels.startWebsitePreview),
   stopWebsitePreview: () => ipcRenderer.invoke(desktopIpcChannels.stopWebsitePreview),

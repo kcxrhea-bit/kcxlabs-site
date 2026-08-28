@@ -30,7 +30,11 @@ export async function previewRelease(draft: ReleaseDraft, project: CatalogProjec
     if (!file.isFile()) errors.push("The selected artifact is not a file.");
     if (file.size === 0) errors.push("The selected artifact is empty.");
     const hash = await sha256(artifactPath);
-    if (!/\.(exe|msi|zip)$/i.test(artifactPath)) warnings.push("Artifact is not an installer or ZIP archive.");
+    if (!/\.(exe|msi|zip|apk)$/i.test(artifactPath)) {
+    warnings.push(
+      "Artifact is not a supported EXE, MSI, ZIP, or APK release file.",
+    );
+  }
     return {
       isValid: errors.length === 0,
       errors,

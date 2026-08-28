@@ -20,10 +20,24 @@ test("theme synchronization creates backups and prevents escaped targets", () =>
   assert.match(platform, /Theme destination escaped the project folder/);
 });
 
-test("website preview and deployment readiness stay local and manual", () => {
+test("website preview stays local and production deployment is readiness-gated and confirmed", () => {
   assert.match(platform, /startPreview/);
   assert.match(platform, /stopPreview/);
-  assert.match(platform, /deployAllowed: false/);
+
+  assert.match(platform, /expectedProjectName = "kcxlabs-site"/);
+  assert.match(platform, /expectedProjectId = "prj_48w3bet6EUcLRHsH2FykHduTNFmT"/);
+  assert.match(platform, /productionUrl = "https:\/\/kcxlabs\.org"/);
+  assert.match(platform, /projectName === expectedProjectName/);
+  assert.match(platform, /projectId === expectedProjectId/);
+  assert.match(platform, /publishedReleaseFilesReady/);
+  assert.match(platform, /deployAllowed: errors\.length === 0/);
+
+  assert.match(main, /Deploy KCx Labs to production\?/);
+  assert.match(main, /buttons: \["Cancel", "Deploy production"\]/);
+  assert.match(main, /defaultId: 0/);
+  assert.match(main, /cancelId: 0/);
+  assert.match(main, /confirmation\.response !== 1/);
+  assert.match(main, /platform\.deployWebsite/);
 });
 
 test("website publishing catalog starts as valid structured metadata", () => {

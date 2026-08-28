@@ -39,12 +39,33 @@ const targetInfo: Record<
   },
 };
 
+function releaseVersionFromArtifact(path: string): string {
+  const matches = path.match(
+    /\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g,
+  );
+
+  return matches && matches.length
+    ? matches[matches.length - 1]
+    : "";
+}
+
+function isPublishableArtifact(path: string): boolean {
+  return /\.(exe|msi|zip|apk)$/i.test(path);
+}
+
 export function ArtifactPreparation({
   projects,
   setMessage,
+  onPrepareRelease,
 }: {
   projects: CatalogProject[];
   setMessage: (message: string) => void;
+  onPrepareRelease: (draft: {
+    projectId: string;
+    artifactPath: string;
+    version: string;
+    title: string;
+  }) => void;
 }) {
   const [projectId, setProjectId] = useState("");
   const [status, setStatus] =
@@ -690,6 +711,39 @@ export function ArtifactPreparation({
               {plan.expectedArtifacts.map((artifact) => (
                 <li key={artifact}>
                   <code>{artifact}</code>
+
+                  {isPublishableArtifact(artifact) && (
+                    <div
+                      className="desktop-action-row"
+                      style={{ marginTop: "0.5rem" }}
+                    >
+                      <button
+                        type="button"
+                        className="desktop-action desktop-action-secondary"
+                        onClick={() => {
+                          const project = projects.find(
+                            (candidate) => candidate.id === projectId,
+                          );
+
+                          if (!project) return;
+
+                          const version =
+                            releaseVersionFromArtifact(artifact);
+
+                          onPrepareRelease({
+                            projectId,
+                            artifactPath: artifact,
+                            version,
+                            title: version
+                              ? `${project.name} ${version}`
+                              : project.name,
+                          });
+                        }}
+                      >
+                        Prepare Release
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -793,6 +847,39 @@ export function ArtifactPreparation({
               {result.artifactPaths.map((artifact) => (
                 <li key={artifact}>
                   <code>{artifact}</code>
+
+                  {isPublishableArtifact(artifact) && (
+                    <div
+                      className="desktop-action-row"
+                      style={{ marginTop: "0.5rem" }}
+                    >
+                      <button
+                        type="button"
+                        className="desktop-action desktop-action-secondary"
+                        onClick={() => {
+                          const project = projects.find(
+                            (candidate) => candidate.id === projectId,
+                          );
+
+                          if (!project) return;
+
+                          const version =
+                            releaseVersionFromArtifact(artifact);
+
+                          onPrepareRelease({
+                            projectId,
+                            artifactPath: artifact,
+                            version,
+                            title: version
+                              ? `${project.name} ${version}`
+                              : project.name,
+                          });
+                        }}
+                      >
+                        Prepare Release
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

@@ -236,8 +236,83 @@ app.whenReady().then(() => {
     return confirmation.response === 1 ? platform.publishRelease(draft, project) : { ok: false, message: "Publishing cancelled." };
   });
   ipcMain.handle(desktopIpcChannels.getActivity, () => platform.getActivity());
-  ipcMain.handle(desktopIpcChannels.getDeploymentReadiness, () => platform.deploymentReadiness());
-  ipcMain.handle(desktopIpcChannels.buildWebsite, () => platform.buildWebsite());
+  ipcMain.handle(
+    desktopIpcChannels.getDeploymentReadiness,
+    () => platform.deploymentReadiness(),
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.deployWebsite,
+    async (event) => {
+      const readiness = await platform.deploymentReadiness();
+
+      if (!readiness.deployAllowed) {
+        return {
+          ok: false,
+          message:
+            readiness.errors.join(" ") ||
+            "Production deployment is not ready.",
+          projectName: readiness.projectName ?? "kcxlabs-site",
+          productionUrl: readiness.productionUrl,
+          deploymentUrl: null,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        };
+      }
+
+      if (!mainWindow) {
+        return {
+          ok: false,
+          message: "The KCx Labs window is not available.",
+          projectName: readiness.projectName ?? "kcxlabs-site",
+          productionUrl: readiness.productionUrl,
+          deploymentUrl: null,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        };
+      }
+
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        buttons: ["Cancel", "Deploy production"],
+        defaultId: 0,
+        cancelId: 0,
+        title: "Deploy KCx Labs to production?",
+        message: "Deploy KCx Labs to production?",
+        detail:
+          `Target: ${readiness.productionUrl}\n` +
+          `Project: ${readiness.projectName ?? "kcxlabs-site"}\n\n` +
+          "This updates the live production website.",
+        noLink: true,
+      });
+
+      if (confirmation.response !== 1) {
+        return {
+          ok: false,
+          message: "Production deployment cancelled. Nothing was deployed.",
+          projectName: readiness.projectName ?? "kcxlabs-site",
+          productionUrl: readiness.productionUrl,
+          deploymentUrl: null,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        };
+      }
+
+      return platform.deployWebsite((progress) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send(
+            desktopIpcChannels.deploymentProgress,
+            progress,
+          );
+        }
+      });
+    },
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.buildWebsite,
+    () => platform.buildWebsite(),
+  );
   ipcMain.handle(desktopIpcChannels.getPreviewStatus, () => platform.getPreviewStatus());
   ipcMain.handle(desktopIpcChannels.startWebsitePreview, () => platform.startPreview());
   ipcMain.handle(desktopIpcChannels.stopWebsitePreview, () => platform.stopPreview());

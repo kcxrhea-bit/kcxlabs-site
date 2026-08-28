@@ -13,3 +13,7 @@ release/
 *.log
 public/downloads/staged/
 src/desktop/*.sidebar-scroll-backup-*
+.env*
+
+# Published release binaries are deployed/stored outside Git
+public/downloads/releases/

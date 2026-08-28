@@ -27,6 +27,8 @@ export const desktopIpcChannels = {
   publishRelease: "release:publish",
   getActivity: "activity:list",
   getDeploymentReadiness: "deployment:readiness",
+  deployWebsite: "deployment:deploy",
+  deploymentProgress: "deployment:progress",
   buildWebsite: "website:build",
   getPreviewStatus: "website-preview:status",
   startWebsitePreview: "website-preview:start",

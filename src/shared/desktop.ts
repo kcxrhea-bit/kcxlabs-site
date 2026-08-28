@@ -34,6 +34,8 @@ export type DesktopApi = {
   publishRelease(draft: ReleaseDraft): Promise<OperationResult>;
   getActivity(): Promise<ActivityEntry[]>;
   getDeploymentReadiness(): Promise<DeploymentReadiness>;
+  deployWebsite(): Promise<DeploymentResult>;
+  onDeploymentProgress(listener: (progress: DeploymentProgress) => void): () => void;
   buildWebsite(): Promise<OperationResult>;
   getPreviewStatus(): Promise<PreviewStatus>;
   startWebsitePreview(): Promise<PreviewStatus>;
@@ -99,7 +101,47 @@ export type PatchPreview = { isValid: boolean; errors: string[]; fileName: strin
 
 export type ActivityEntry = { id: string; at: string; level: "info" | "warning" | "error"; action: string; detail: string };
 export type OperationResult = { ok: boolean; message: string; output?: string };
-export type DeploymentReadiness = { branch: string; gitStatus: string[]; websiteBuildReady: boolean; vercelCliAvailable: boolean; deployAllowed: false };
+export type DeploymentReadiness = {
+  branch: string;
+  gitStatus: string[];
+  websiteBuildReady: boolean;
+  vercelCliAvailable: boolean;
+  vercelVersion: string | null;
+  authenticated: boolean;
+  account: string | null;
+  team: string | null;
+  projectResolved: boolean;
+  projectName: string | null;
+  projectId: string | null;
+  productionUrl: string;
+  publishedReleaseCount: number;
+  publishedReleaseFilesReady: boolean;
+  errors: string[];
+  deployAllowed: boolean;
+};
+
+export type DeploymentStage =
+  | "checking"
+  | "building"
+  | "deploying"
+  | "verifying"
+  | "complete"
+  | "failed";
+
+export type DeploymentProgress = {
+  stage: DeploymentStage;
+  progress: number;
+  message: string;
+  output?: string;
+};
+
+export type DeploymentResult = OperationResult & {
+  projectName: string;
+  productionUrl: string;
+  deploymentUrl: string | null;
+  startedAt: string;
+  completedAt: string;
+};
 export type PreviewStatus = { running: boolean; url: string | null; stdout: string[]; stderr: string[] };
 export type ThemeFileState = { source: string; destination: string; status: "current" | "outdated" | "missing" };
 export type ThemeScan = { projectId: string; projectName: string; files: ThemeFileState[]; ready: boolean };
