@@ -17,10 +17,14 @@ import archiveComplete from "../server/media-api/routes/archive/[id]/complete.js
 import archiveFail from "../server/media-api/routes/archive/[id]/fail.js";
 import archiveDownloadAuthorize from "../server/media-api/routes/archive/[id]/download-authorize.js";
 import archiveRemoveCloudOriginal from "../server/media-api/routes/archive/[id]/remove-cloud-original.js";
+import snapcalHealth from "../server/snapcal-api/routes/health.js";
+import snapcalCalendars from "../server/snapcal-api/routes/calendars.js";
+import snapcalEvents from "../server/snapcal-api/routes/events/index.js";
+import snapcalEventItem from "../server/snapcal-api/routes/events/[id].js";
 
 /**
- * Single Vercel Function fronting the entire Media Center API, to stay under the Hobby plan's
- * 12-function cap (there are 17 distinct routes). Every imported module is the original,
+ * Single Vercel Function fronting the entire Media Center AND SnapCal APIs, to stay under the
+ * Hobby plan's 12-function cap (there are 21 distinct routes). Every imported module is the original,
  * untouched route logic from `server/media-api/routes/*` — only relocated out of `api/` so
  * Vercel's function discovery no longer counts each one separately; each still ends in the same
  * `export default toNodeHandler(handler)` it always did. This file's only job is picking which
@@ -95,6 +99,9 @@ const exactRoutes: Record<string, NodeHandler> = {
   "media/upload-authorize": uploadAuthorize,
   "media/finalize": finalize,
   "archive/jobs": archiveJobs,
+  "snapcal/v1/health": snapcalHealth,
+  "snapcal/v1/calendars": snapcalCalendars,
+  "snapcal/v1/events": snapcalEvents,
 };
 
 function matchDynamic(segments: string[]): NodeHandler | null {
@@ -107,6 +114,7 @@ function matchDynamic(segments: string[]): NodeHandler | null {
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "fail") return archiveFail; // /archive/<id>/fail
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "download-authorize") return archiveDownloadAuthorize; // /archive/<id>/download-authorize
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "remove-cloud-original") return archiveRemoveCloudOriginal; // /archive/<id>/remove-cloud-original
+  if (segments.length === 4 && segments[0] === "snapcal" && segments[1] === "v1" && segments[2] === "events") return snapcalEventItem; // /snapcal/v1/events/<id>
   return null;
 }
 
