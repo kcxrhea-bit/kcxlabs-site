@@ -8,6 +8,8 @@ import { previewRelease } from "./release-planner";
 import { PlatformService } from "./platform-service";
 import { scanForProjects } from "./project-discovery";
 import { MediaService } from "./media-service";
+import { DistributionService } from "./distribution-service";
+import type { DistributionTarget } from "../src/shared/desktop";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -56,6 +58,7 @@ app.whenReady().then(() => {
   const catalog = createCatalogService(app.getPath("userData"));
   const platform = new PlatformService(app.getAppPath(), app.getPath("userData"));
   const media = new MediaService(app.getPath("userData"));
+  const distribution = new DistributionService(app.getAppPath());
   ipcMain.handle(desktopIpcChannels.listProjects, () => catalog.list());
   ipcMain.handle(desktopIpcChannels.addProject, (_event, input: NewCatalogProject) => catalog.add(input));
   ipcMain.handle(desktopIpcChannels.chooseProjectFolder, async () => {
@@ -106,6 +109,55 @@ app.whenReady().then(() => {
   });
   ipcMain.handle(desktopIpcChannels.createProjectZip, async (_event, id: string) => platform.createProjectZip((await catalog.list()).find((project) => project.id === id)));
   ipcMain.handle(desktopIpcChannels.buildProjectExecutable, async (_event, id: string) => platform.buildProjectExecutable((await catalog.list()).find((project) => project.id === id)));
+
+  ipcMain.handle(desktopIpcChannels.getDistributionCapabilities, async (_event, id: string) => {
+    const project = (await catalog.list()).find((candidate) => candidate.id === id);
+    return distribution.capabilities(project);
+  });
+
+  ipcMain.handle(
+    desktopIpcChannels.previewDistribution,
+    async (_event, id: string, target: DistributionTarget) => {
+      const project = (await catalog.list()).find((candidate) => candidate.id === id);
+      return distribution.preview(project, target);
+    },
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.runDistribution,
+    async (event, id: string, target: DistributionTarget) => {
+      const project = (await catalog.list()).find((candidate) => candidate.id === id);
+
+      return distribution.run(project, target, (progress) => {
+        event.sender.send(desktopIpcChannels.distributionProgress, progress);
+      });
+    },
+  );
+  ipcMain.handle(
+    desktopIpcChannels.getDistributionProjectStatus,
+    async (_event, id: string) => {
+      const project = (await catalog.list()).find(
+        (candidate) => candidate.id === id,
+      );
+      return distribution.projectStatus(project);
+    },
+  );
+
+  ipcMain.handle(
+    desktopIpcChannels.runDistributionWorkflow,
+    async (event, request: import("../src/shared/desktop").DistributionWorkflowRequest) => {
+      const project = (await catalog.list()).find(
+        (candidate) => candidate.id === request.projectId,
+      );
+
+      return distribution.workflow(project, request, (progress) => {
+        event.sender.send(
+          desktopIpcChannels.distributionProgress,
+          progress,
+        );
+      });
+    },
+  );
   ipcMain.handle(desktopIpcChannels.previewRelease, async (_event, draft: ReleaseDraft) => {
     const project = (await catalog.list()).find((candidate) => candidate.id === draft.projectId);
     return previewRelease(draft, project);

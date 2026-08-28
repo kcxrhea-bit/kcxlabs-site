@@ -22,6 +22,12 @@ export type DesktopApi = {
   openProjectFolder(projectId: string): Promise<OperationResult>;
   createProjectZip(projectId: string): Promise<OperationResult>;
   buildProjectExecutable(projectId: string): Promise<OperationResult>;
+  getDistributionCapabilities(projectId: string): Promise<DistributionCapabilities>;
+  previewDistribution(projectId: string, target: DistributionTarget): Promise<DistributionPlan>;
+  runDistribution(projectId: string, target: DistributionTarget): Promise<DistributionRunResult>;
+  onDistributionProgress(listener: (progress: DistributionProgress) => void): () => void;
+  getDistributionProjectStatus(projectId: string): Promise<DistributionProjectStatus>;
+  runDistributionWorkflow(request: DistributionWorkflowRequest): Promise<DistributionWorkflowResult>;
   previewRelease(draft: ReleaseDraft): Promise<ReleasePreview>;
   publishRelease(draft: ReleaseDraft): Promise<OperationResult>;
   getActivity(): Promise<ActivityEntry[]>;
@@ -133,3 +139,100 @@ export type MediaUploadRecord = {
 
 // Never carries the device bearer token — only whether one is stored, and non-secret metadata.
 export type DevicePairingStatus = { paired: boolean; deviceName: string | null; expiresAt: string | null };
+
+export type DistributionTarget =
+  | "web"
+  | "executable"
+  | "installer"
+  | "apk"
+  | "zip"
+  | "source";
+
+export type DistributionCapabilities = {
+  projectId: string;
+  projectName: string;
+  projectFolder: string;
+  web: boolean;
+  executable: boolean;
+  installer: boolean;
+  apk: boolean;
+  zip: boolean;
+  source: boolean;
+};
+
+export type DistributionPlan = {
+  projectId: string;
+  projectName: string;
+  target: DistributionTarget;
+  supported: boolean;
+  workingDirectory: string;
+  command: string | null;
+  args: string[];
+  expectedArtifacts: string[];
+  message: string;
+};
+export type DistributionStage =
+  | "queued"
+  | "preparing"
+  | "building"
+  | "collecting"
+  | "staging"
+  | "complete"
+  | "failed";
+
+export type DistributionProgress = {
+  projectId: string;
+  target: DistributionTarget;
+  stage: DistributionStage;
+  progress: number;
+  message: string;
+  output?: string;
+};
+
+export type DistributionRunResult = OperationResult & {
+  target: DistributionTarget;
+  artifactPaths: string[];
+};
+export type DistributionReadiness =
+  | "ready"
+  | "needs-setup"
+  | "built"
+  | "staged"
+  | "published"
+  | "deployed"
+  | "unsupported";
+
+export type DistributionTargetStatus = {
+  target: DistributionTarget;
+  readiness: DistributionReadiness;
+  reason: string;
+  canConfigure: boolean;
+  canBuild: boolean;
+};
+
+export type DistributionProjectStatus = {
+  projectId: string;
+  projectName: string;
+  targets: DistributionTargetStatus[];
+};
+
+export type DistributionAction =
+  | "configure"
+  | "build"
+  | "stage"
+  | "publish"
+  | "deploy";
+
+export type DistributionWorkflowRequest = {
+  projectId: string;
+  targets: DistributionTarget[];
+  actions: DistributionAction[];
+};
+
+export type DistributionWorkflowResult = {
+  ok: boolean;
+  message: string;
+  projectId: string;
+  completedActions: DistributionAction[];
+  artifactPaths: string[];
+};

@@ -21,7 +21,32 @@ const desktopApi: DesktopApi = {
   openProjectFolder: (projectId) => ipcRenderer.invoke(desktopIpcChannels.openProjectFolder, projectId),
   createProjectZip: (projectId) => ipcRenderer.invoke(desktopIpcChannels.createProjectZip, projectId),
   buildProjectExecutable: (projectId) => ipcRenderer.invoke(desktopIpcChannels.buildProjectExecutable, projectId),
-  previewRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.previewRelease, draft),
+  getDistributionCapabilities: (projectId) =>
+    ipcRenderer.invoke(desktopIpcChannels.getDistributionCapabilities, projectId),
+  previewDistribution: (projectId, target) =>
+    ipcRenderer.invoke(desktopIpcChannels.previewDistribution, projectId, target),
+  runDistribution: (projectId, target) =>
+    ipcRenderer.invoke(desktopIpcChannels.runDistribution, projectId, target),
+  onDistributionProgress: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof listener>[0]) =>
+      listener(progress);
+
+    ipcRenderer.on(desktopIpcChannels.distributionProgress, wrapped);
+
+    return () => {
+      ipcRenderer.removeListener(desktopIpcChannels.distributionProgress, wrapped);
+    };
+  },
+  getDistributionProjectStatus: (projectId) =>
+    ipcRenderer.invoke(
+      desktopIpcChannels.getDistributionProjectStatus,
+      projectId,
+    ),
+  runDistributionWorkflow: (request) =>
+    ipcRenderer.invoke(
+      desktopIpcChannels.runDistributionWorkflow,
+      request,
+    ),  previewRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.previewRelease, draft),
   publishRelease: (draft) => ipcRenderer.invoke(desktopIpcChannels.publishRelease, draft),
   getActivity: () => ipcRenderer.invoke(desktopIpcChannels.getActivity),
   getDeploymentReadiness: () => ipcRenderer.invoke(desktopIpcChannels.getDeploymentReadiness),
