@@ -56,7 +56,19 @@ export type DesktopApi = {
   unpairDevice(): Promise<OperationResult>;
   /** Opens a clip's kcxlabs.org share URL in the OS default browser via `shell.openExternal`. Refuses anything off-origin. */
   openMediaShareUrl(url: string): Promise<OperationResult>;
+  getNeonStorageAnalysis(): Promise<NeonStorageAnalysis>;
+  previewNeonStorageCleanup(): Promise<NeonCleanupPreview>;
+  runNeonStorageCleanup(): Promise<NeonCleanupResult>;
+  getNeonStorageSettings(): Promise<NeonStorageSettings>;
+  setNeonStorageSettings(settings: NeonStorageSettings): Promise<NeonStorageSettings>;
 };
+
+export type NeonStorageTable = { schema: string; tableName: string; totalBytes: number; tableBytes: number; indexBytes: number; approximateRowCount: number; protected: boolean };
+export type NeonStorageAnalysis = { databaseName: string; totalBytes: number; totalMb: number; freeTierLimitBytes: number; freeTierLimitMb: number; cleanupThresholdBytes: number; cleanupThresholdMb: number; usedPercent: number; remainingBytes: number; remainingMb: number; thresholdReached: boolean; schemaMigrations: number; tables: NeonStorageTable[] };
+export type NeonCleanupCandidate = { id: string; label: string; estimatedReclaimBytes: number; protected: false };
+export type NeonCleanupPreview = { databaseName: string; currentBytes: number; thresholdBytes: number; candidates: NeonCleanupCandidate[]; estimatedReclaimBytes: number; protectedTables: string[]; warnings: string[]; canClean: boolean; explanation: string };
+export type NeonCleanupResult = { ok: boolean; message: string; analysis: NeonStorageAnalysis | null; reclaimedBytes: number; candidatesRun: string[] };
+export type NeonStorageSettings = { autoClean: boolean };
 
 export type ReleaseChannel = "stable" | "beta" | "alpha" | "experimental";
 

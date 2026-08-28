@@ -105,6 +105,11 @@ const desktopApi: DesktopApi = {
   pairDevice: (email: string, password: string, deviceName: string) => ipcRenderer.invoke(desktopIpcChannels.pairDevice, email, password, deviceName),
   unpairDevice: () => ipcRenderer.invoke(desktopIpcChannels.unpairDevice),
   openMediaShareUrl: (url: string) => ipcRenderer.invoke(desktopIpcChannels.openMediaShareUrl, url),
+  getNeonStorageAnalysis: () => ipcRenderer.invoke(desktopIpcChannels.getNeonStorageAnalysis),
+  previewNeonStorageCleanup: () => ipcRenderer.invoke(desktopIpcChannels.previewNeonStorageCleanup),
+  runNeonStorageCleanup: () => ipcRenderer.invoke(desktopIpcChannels.runNeonStorageCleanup),
+  getNeonStorageSettings: () => ipcRenderer.invoke(desktopIpcChannels.getNeonStorageSettings),
+  setNeonStorageSettings: (settings) => ipcRenderer.invoke(desktopIpcChannels.setNeonStorageSettings, settings),
 };
 
 contextBridge.exposeInMainWorld("kcxDesktop", desktopApi);

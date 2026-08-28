@@ -1,12 +1,13 @@
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
-import { Activity, Boxes, CloudUpload, FileText, Film, FolderKanban, Gauge, History, HelpCircle, MonitorPlay, Palette, Rocket, Settings, Wrench } from "lucide-react";
+import { Activity, Boxes, CloudUpload, Database, FileText, Film, FolderKanban, Gauge, History, HelpCircle, MonitorPlay, Palette, Rocket, Settings, Wrench } from "lucide-react";
 import type { ActivityEntry, CatalogProject, DeploymentProgress, DeploymentReadiness, DeploymentResult, DesktopStatus, DiscoveredProject, NewCatalogProject, PreviewStatus, ThemeScan, WebsiteChangePreview, WebsiteChangeRequest } from "../shared/desktop";
 import { PatchImport, ProjectFolderRegistration, ReleaseWizard } from "./WorkflowComponents";
 import { ArtifactPreparation } from "./ArtifactPreparation";
 import { MediaCenter } from "./MediaCenter";
+import { NeonStorage } from "./NeonStorage";
 import "./desktop.css";
 
-type PageName = "Dashboard" | "Media Center" | "Projects" | "Artifacts" | "Release Publisher" | "Patch Import" | "Website" | "Website Preview" | "Deployment" | "Theme Sync" | "Release History" | "Activity" | "Settings" | "Help & Guide";
+type PageName = "Dashboard" | "Media Center" | "Projects" | "Artifacts" | "Release Publisher" | "Patch Import" | "Website" | "Website Preview" | "Deployment" | "Theme Sync" | "Release History" | "Activity" | "Settings" | "Neon Storage" | "Help & Guide";
 type ReleaseHandoff = {
   projectId: string;
   artifactPath: string;
@@ -27,6 +28,7 @@ const navigation: Array<{ label: PageName; icon: typeof Gauge; group: string; de
   { label: "Release History", icon: History, group: "System", description: "Review local release activity" },
   { label: "Activity", icon: Activity, group: "System", description: "Review recent actions" },
   { label: "Settings", icon: Settings, group: "System", description: "Understand local settings" },
+  { label: "Neon Storage", icon: Database, group: "System", description: "Monitor Neon database storage" },
   { label: "Help & Guide", icon: HelpCircle, group: "System", description: "Learn every available workflow" },
 ];
 const initialProject: NewCatalogProject = { name: "", slug: "", folder: "", description: "", category: "", currentVersion: "", releaseChannel: "stable", websiteVisible: true, downloadVisible: true };
@@ -96,6 +98,7 @@ function Page({
   if (page === "Theme Sync") return <Theme projects={projects} setMessage={setMessage} />;
   if (page === "Activity" || page === "Release History") return <Log releaseOnly={page === "Release History"} setMessage={setMessage} />;
   if (page === "Settings") return <SettingsPage />;
+  if (page === "Neon Storage") return <NeonStorage />;
   return <Guide navigate={navigate} />;
 }
 
@@ -327,6 +330,15 @@ function Guide({ navigate }: { navigate: (page: PageName) => void }) {
       <>
         <p><button className="desktop-link" onClick={() => navigate("Activity")}>Activity</button> shows recent actions recorded locally by this desktop app. <button className="desktop-link" onClick={() => navigate("Release History")}>Release History</button> filters that local record to release-related actions.</p>
         <p>These pages are not cloud audit logs or live production monitors. Use Refresh to reload the local activity file.</p>
+      </>,
+    ],
+    [
+      "Neon Storage",
+      <>
+        <p><button className="desktop-link" onClick={() => navigate("Neon Storage")}>Neon Storage</button> reads storage usage from the fixed <strong>neondb</strong> database through the Electron main process. It shows database size, the 512 MB free-tier limit, the 400 MB cleanup threshold, remaining space, and the largest tables.</p>
+        <p>Analyze storage for read-only current values. Preview safe cleanup is also read-only. Run safe cleanup is disabled unless a predefined safe candidate exists, and any future candidate will be checked against the protected tables: owners, schema_migrations, snapcal_calendars, snapcal_events, and media.</p>
+        <p>Auto-clean is off by default and is stored only in this desktop app's local user data. Enabling it allows the same predefined policy to be checked at startup and after relevant operations; it never sends credentials to the renderer or accepts SQL/table names from the UI.</p>
+        <p>If DATABASE_URL is missing, Neon is unreachable, the wrong database is selected, a query fails, or local settings cannot be saved, the page reports a safe error without exposing credentials. No safe cleanup available means no database writes occur. Related features: Media Center and local desktop Settings.</p>
       </>,
     ],
     [

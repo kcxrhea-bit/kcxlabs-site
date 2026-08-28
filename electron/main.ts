@@ -10,6 +10,7 @@ import { scanForProjects } from "./project-discovery";
 import { MediaService } from "./media-service";
 import { DistributionService } from "./distribution-service";
 import type { DistributionTarget } from "../src/shared/desktop";
+import { NeonStorageService } from "./neon-storage-service";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -125,6 +126,24 @@ app.whenReady().then(() => {
       return distribution.preview(project, target);
     },
   );
+  const neonStorage = new NeonStorageService(app.getPath("userData"), app.getAppPath());
+  ipcMain.handle(desktopIpcChannels.getNeonStorageAnalysis, () => neonStorage.analysis());
+  ipcMain.handle(desktopIpcChannels.previewNeonStorageCleanup, () => neonStorage.preview());
+  ipcMain.handle(desktopIpcChannels.getNeonStorageSettings, () => neonStorage.getSettings());
+  ipcMain.handle(desktopIpcChannels.setNeonStorageSettings, (_event, settings) => neonStorage.setSettings(settings));
+  void neonStorage.getSettings().then(async (settings) => {
+    if (!settings.autoClean) return;
+    const preview = await neonStorage.preview();
+    if (preview.canClean) await neonStorage.cleanup();
+  }).catch(() => {
+    // Startup auto-clean is best effort; the page reports actionable errors when opened.
+  });
+  ipcMain.handle(desktopIpcChannels.runNeonStorageCleanup, async () => {
+    const preview = await neonStorage.preview();
+    if (!preview.canClean) return neonStorage.cleanup();
+    const confirmation = await dialog.showMessageBox({ type: "warning", buttons: ["Cancel", "Run safe cleanup"], defaultId: 0, cancelId: 0, title: "Clean Neon storage?", message: "Run the predefined safe Neon cleanup policy?", detail: "Only predefined safe operations will run. Protected KCx/SnapCal tables will not be deleted.", noLink: true });
+    return confirmation.response === 1 ? neonStorage.cleanup() : { ok: false, message: "Cleanup cancelled. No database changes were made.", analysis: null, reclaimedBytes: 0, candidatesRun: [] };
+  });
 
   ipcMain.handle(
     desktopIpcChannels.runDistribution,

@@ -46,6 +46,11 @@ export const desktopIpcChannels = {
   pairDevice: "media:pair",
   unpairDevice: "media:unpair",
   openMediaShareUrl: "media:open-share-url",
+  getNeonStorageAnalysis: "neon-storage:analysis",
+  previewNeonStorageCleanup: "neon-storage:cleanup-preview",
+  runNeonStorageCleanup: "neon-storage:cleanup-run",
+  getNeonStorageSettings: "neon-storage:settings-get",
+  setNeonStorageSettings: "neon-storage:settings-set",
 } as const;
 
 export type DesktopIpcChannel = (typeof desktopIpcChannels)[keyof typeof desktopIpcChannels];

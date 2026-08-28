@@ -23,9 +23,10 @@ async function handler(request: Request): Promise<Response> {
     const ownerId = "owner_kcx";
     await auth.ensureOwner({ id: ownerId, email: config.auth.ownerEmail, passwordHash: config.auth.ownerPasswordHash });
     const token = generateDeviceToken();
+    const deviceTokenId = generateDeviceTokenId();
     const expiresAt = deviceTokenExpiry(new Date());
-    await auth.createDeviceToken({ id: generateDeviceTokenId(), ownerId, tokenHash: hashDeviceToken(token), deviceName, expiresAt });
-    return json(201, { token, expiresAt });
+    await auth.createDeviceToken({ id: deviceTokenId, ownerId, tokenHash: hashDeviceToken(token), deviceName, expiresAt });
+    return json(201, { token, deviceTokenId, expiresAt });
   } catch (error) {
     return internalError(error, config);
   }

@@ -1,0 +1,1071 @@
+promote/desktop-media-center
+?? snapcal-hosted-server-inspection.txt
+# SnapCal Hosted Calendar — Architecture (Phase 7A: Cloud Foundation)
+
+SnapCal is the hosted, always-online calendar backend behind KsnapCalx
+(Windows desktop), KsnapCalxBuddy (Android), and the SnapCal web calendar at
+`https://kcxlabs.org/snapcal`. This document covers **Phase 7A only**: the
+database schema and API. Phase 7B (web calendar UI), 7C (Windows sync), 7D
+(Android sync), and 7E (realtime/offline hardening) build on top of this and
+are documented separately as they land.
+
+## Why this exists
+
+Before Phase 7, KsnapCalx's calendar lived only in a local SQLite database on
+one Windows PC (see KsnapCalx's `docs/architecture.md`). That is a real
+calendar, but it requires the PC to be on for KsnapCalxBuddy (Android) to see
+anything, since Phase 6 only added a *local* pairing API bound to
+`127.0.0.1`/LAN. SnapCal makes the **hosted service** — not any one device —
+the authoritative shared calendar:
+
+```
+KsnapCalx Windows ──────┐
+                        │
+KsnapCalxBuddy Android ─┼──> SnapCal API (Vercel) ──> Neon Postgres
+                        │
+SnapCal Web ────────────┘
+```
+
+Every client talks to the cloud directly. The PC can be off; Android and the
+website keep working. Android can be off; the PC and website keep working.
+**No client depends on another client being reachable.** The Phase 6 local
+API remains useful for local-only Buddy features (e.g. LAN scan upload while
+both devices happen to be on the same network) but is explicitly not the
+sync authority — see "Phase 6 vs Phase 7" below.
+
+## Reused infrastructure
+
+This is additive to the existing KCx Labs Media Center backend, not a new
+service:
+
+- **Same Neon connection** (`server/media-api/_lib/db.ts`'s `createDb`/`Db`)
+  — SnapCal's data layer (`server/snapcal-api/_lib/db.ts`) imports it rather
+  than opening a second connection path.
+- **Same single-owner auth system** (`owners`/`device_tokens` tables,
+  `requireDevice()` in `server/media-api/_lib/http.ts`) — a KsnapCalx
+  Windows install and a KsnapCalxBuddy Android install each pair via the
+  existing `POST /api/auth/pair` (email + password → a bearer device token,
+  revocable via `POST /api/auth/revoke`), exactly like the desktop media app
+  already does. See "Authentication" below for why reusing this — rather
+  than inventing a second credential system — was judged safe.
+- **Same single Vercel Function** (`api/router.ts`) — SnapCal's four routes
+  are registered there, so this stays one Vercel Function total (Hobby
+  plan's 12-function cap), not two.
+- **Same config/secret-hygiene rules** (`server/media-api/_lib/config.ts`) —
+  SnapCal introduced **zero new environment variables**. It reuses
+  `DATABASE_URL`, `OWNER_EMAIL`, `OWNER_PASSWORD_HASH`, `SESSION_SECRET`.
+
+## Database schema
+
+`db/migrations/002_snapcal_init.sql`, applied additively after
+`001_media_init.sql` (never edited — migrations are append-only once
+applied, per this repo's established convention).
+
+### `snapcal_calendars`
+
+| column | type | notes |
+|---|---|---|
+| `id` | `TEXT` PK | app-generated (`cal_<uuid>`) |
+| `owner_id` | `TEXT` | FK → `owners(id)` |
+| `name` | `TEXT` | |
+| `color` | `TEXT` | hex color, default `#8b5cf6` (matches KsnapCalx desktop's default) |
+| `revision` | `BIGINT` | see "Sync protocol" |
+| `deleted_at` | `TIMESTAMPTZ` | tombstone |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | |
+
+### `snapcal_events`
+
+Mirrors KsnapCalx desktop's local `CalendarEvent` fields (see the KsnapCalx
+repo's `packages/calendar-core`) so nothing the desktop already does is
+silently discarded when an event round-trips through the cloud:
+
+| column | type | notes |
+|---|---|---|
+| `id` | `TEXT` PK | app-generated (`evt_<uuid>`) — the **stable server event ID** |
+| `calendar_id` | `TEXT` | FK → `snapcal_calendars(id)` |
+| `owner_id` | `TEXT` | FK → `owners(id)`, denormalized for fast/scoped queries |
+| `title` | `TEXT` | required |
+| `description`, `location` | `TEXT`, nullable | |
+| `start_at`, `end_at` | `TIMESTAMPTZ` | absolute UTC instants; `CHECK (end_at >= start_at)` |
+| `all_day` | `BOOLEAN` | |
+| `timezone` | `TEXT` | IANA name the event was authored in — see "Timezone-safe representation" |
+| `category_id` | `TEXT`, nullable | preserves KsnapCalx's category feature |
+| `reminder_offset_minutes` | `INTEGER`, nullable | preserves KsnapCalx's reminders |
+| `recurrence_frequency`/`interval`/`until_date`/`occurrence_count` | nullable | preserves KsnapCalx's recurrence |
+| `client_mutation_id` | `TEXT`, nullable | see "Idempotent writes" |
+| `revision` | `BIGINT` | see "Sync protocol" |
+| `deleted_at` | `TIMESTAMPTZ`, nullable | tombstone, see "Deletion" |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | |
+
+**Timezone-safe representation**: `start_at`/`end_at` are always absolute
+UTC instants (unambiguous, comparable, indexable), and `timezone` separately
+records the IANA zone the event was authored in, so a client can always
+recover the original wall-clock time — not just a UTC instant that's already
+lost which "10:00 AM" it was.
+
+Extensibility for category/recurrence/reminders is deliberate: these are
+real typed columns (matching KsnapCalx's own `005_calendar_hardening`
+migration and this repo's own "no JSON blobs" convention for indexable
+data), not squeezed into an existing generic field.
+
+## API
+
+Base path: **`/api/snapcal/v1`** — versioned so a client can detect
+incompatibility before relying on anything else.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/health` | none | Liveness + version. |
+| GET | `/calendars` | device token | The owner's calendars (auto-provisions a default one). |
+| GET | `/events?calendarId=` | device token | Full listing (excludes tombstones). |
+| GET | `/events?calendarId=&sinceRevision=N` | device token | **Incremental pull** — everything past revision N, tombstones included. |
+| POST | `/events` | device token | Create (body includes `calendarId`). |
+| GET | `/events/:id?calendarId=` | device token | Retrieve one event. |
+| PATCH | `/events/:id` | device token | Update (`calendarId`, `expectedRevision`, changed fields). |
+| DELETE | `/events/:id` | device token | Tombstone (`calendarId`, `expectedRevision`). |
+
+Error envelope: `{ "error": { "code": "...", "message": "..." } }` (same
+shape KsnapCalx's own local Phase 6 API already uses, for consistency
+across the two APIs a client implementer has to learn). Status codes: `200`,
+`201`, `400`, `401`, `404`, `405`, `409` (see "Conflict semantics"), `500`.
+
+There is intentionally **no calendar-wide "download everything" endpoint
+beyond the first full `GET /events`** — every subsequent sync uses
+`sinceRevision`, never a full re-fetch.
+
+## Authentication
+
+Two roles exist in principle, though this app has exactly one human owner
+today:
+
+- **Human/web authentication** — the browser at `kcxlabs.org/snapcal` will
+  authenticate as the site's existing admin/owner. Phase 7A does not add a
+  new browser-session mechanism: it reuses `signSession`/`verifySignedSession`
+  in `server/media-api/_lib/auth.ts`, already built for exactly this ("used
+  only for the browser admin session cookie") but not yet wired to any
+  route. Phase 7B wires the SnapCal web UI to this cookie flow.
+- **Native client/device authorization** — KsnapCalx (Windows) and
+  KsnapCalxBuddy (Android) each authenticate as a *device*, via the
+  **existing** `POST /api/auth/pair` → bearer token → `Authorization: Bearer
+  <token>` on every SnapCal request, verified by the **existing**
+  `requireDevice()` (SHA-256 token hash lookup, revocation/expiry checked on
+  every request, `last_used_at` touched).
+
+**Why reusing the existing device-token system was judged safe** (per the
+requirement to explicitly evaluate this rather than assume it): this is
+already an internet-facing (not LAN-only), server-issued, individually
+revocable, SHA-256-hashed, 180-day-expiring credential — built for exactly
+this purpose (a native client authenticating to this Vercel deployment) and
+already used by the desktop media app the same way. It is a **completely
+separate system** from KsnapCalx's own Phase 6 *local* LAN pairing tokens
+(those are generated and verified entirely inside the Windows app's own
+`node:http` server for `127.0.0.1`/LAN use — see KsnapCalx's
+`docs/buddy-api-v1.md` — and never reach this repo or Neon at all). No
+Phase 6 credential is reused as an internet credential; a fresh pairing
+against **this** service is required.
+
+Authorization is calendar-scoped in the sense the system currently has: a
+single owner (`owner_kcx`) owns every calendar and event, and `owner_id` is
+checked on every SnapCal query — a device token can never see or mutate
+another owner's data, and (once a second owner exists) rows are already
+partitioned by `owner_id` so multi-owner requires no data migration, mirroring
+`001_media_init.sql`'s original owners design.
+
+Every protected route fails closed: missing/malformed/unknown/expired/revoked
+tokens all return `401` before any database write is attempted.
+
+## Sync protocol
+
+**Stable server IDs.** `snapcal_events.id` is generated once at creation
+(`evt_<uuid>`) and never changes — a client's local cache keys off it.
+
+**Monotonic revision.** `snapcal_revision_seq` is one Postgres sequence
+shared by both tables. Every insert and every update (including
+tombstoning) is assigned `nextval('snapcal_revision_seq')`. A client
+persists the single highest revision number it has seen and passes it back
+as `sinceRevision` on its next pull — one number is enough to resume sync
+from any point, across both calendars and events.
+
+**Incremental pull**: `GET /events?calendarId=&sinceRevision=N` is the
+entire read side of sync. It returns every row (active or tombstoned) with
+`revision > N`, ordered by revision, capped at 2000 rows per call so a huge
+backlog is paginated by repeatedly advancing the cursor rather than risking
+an unbounded response.
+
+**Idempotent writes / duplicate-retry safety.** A client generates a
+`clientMutationId` once per logical "create this event" action and resends
+the *same* value if the request needs to be retried (timeout, dropped
+connection, etc.). `snapcal_events` has a partial unique index on
+`(calendar_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL`;
+`POST /events` uses `ON CONFLICT ... DO NOTHING` and, on conflict, returns
+the **already-created** event with `duplicate: true` instead of erroring or
+creating a second row — the same "duplicate is a non-destructive success,
+not an error" pattern KsnapCalx's own local scan-upload API already uses.
+
+**Tombstones, not deletes.** `DELETE /events/:id` sets `deleted_at` and
+bumps `revision`; the row is retained. A client that was offline during a
+deletion learns about it on its next `sinceRevision` pull instead of the
+event silently vanishing from a query it never re-runs from scratch. (Long-
+term tombstone retention/pruning is explicitly deferred to Phase 7E.)
+
+## Conflict semantics
+
+**Chosen strategy: optimistic concurrency via `expectedRevision`, last-write-
+wins only when there is no conflict.** Every `PATCH`/`DELETE` must include
+`expectedRevision` — the revision the client last observed for that event.
+The database update is a compare-and-set:
+
+```sql
+UPDATE snapcal_events SET ... , revision = nextval(...)
+WHERE id = $1 AND revision = $expectedRevision AND deleted_at IS NULL
+```
+
+- If the row's current revision still matches, the write succeeds and a new
+  revision is assigned.
+- If it doesn't match (someone else — another device, or the same device
+  from a stale cache — changed it first), **the write is refused**: `PATCH`
+  returns `409 REVISION_CONFLICT` with the current server row in the
+  response body; the client decides what to do (show the user both
+  versions, retry with the new revision and their intended change reapplied,
+  or discard their edit). The server never silently picks a winner.
+- Deleting an already-tombstoned event is treated as an idempotent success
+  (not a conflict) — retrying a delete you already know succeeded should not
+  itself become an error.
+- A row that doesn't exist at all (wrong id, or never synced to this
+  device) returns `404`, distinct from `409`.
+
+This is deliberately a **simple, understandable strategy** — compare-and-set
+plus "loser sees a conflict and decides" — rather than a CRDT or automatic
+per-field merge. A more automatic merge strategy is a candidate for Phase 7E
+*if* real usage shows plain conflicts are too disruptive, but is not
+justified before there is a second real client to conflict with anything.
+
+## Deferred to later subphases
+
+- **7B**: the actual `kcxlabs.org/snapcal` web calendar UI, and wiring the
+  browser session-cookie login this document reserves for it.
+- **7C**: KsnapCalx Windows sync engine (local SQLite as offline cache,
+  push/pull against this API, migrating existing local events).
+- **7D**: KsnapCalxBuddy Android sync (mirrors 7C's responsibilities on
+  Android; Android must not depend on the Windows PC being on).
+- **7E**: realtime delivery (so an online client doesn't need a manual
+  refresh to see another online client's change) and additional offline
+  hardening (exponential backoff, clock-skew handling, tombstone retention
+  policy, partial-sync-failure recovery).
+
+## Phase 6 (local) vs Phase 7 (cloud) — which API does what
+
+| | Phase 6 local API (KsnapCalx) | Phase 7 SnapCal API (this doc) |
+|---|---|---|
+| Authority | None — a local convenience, not a sync source of truth | **Authoritative** shared calendar |
+| Reachable when PC is off | No | Yes |
+| Binding | `127.0.0.1` or LAN, opt-in | Public internet (Vercel) |
+| Auth | Its own local pairing codes + device tokens, verified entirely inside the Windows app | KCx Labs' existing owner/device-token system, verified against Neon |
+| Purpose | LAN scan-photo upload from a paired Buddy phone while both devices are on the same network | Calendar CRUD + sync for every client, everywhere |
+| Calendar sync | **Not implemented** (explicitly out of scope — see KsnapCalx's `docs/buddy-api-v1.md`) | This is its entire purpose |
+
+The two are independent and both remain useful: Phase 6 for local-only scan
+intake, Phase 7 for the actual shared calendar.
+
+## Threat model (Phase 7A)
+
+| Threat | Defense |
+|---|---|
+| Unauthenticated internet request | Every route but `/health` calls `requireDevice()` first; fails closed with `401`. |
+| Stolen/leaked device token | Revocable via the existing `POST /api/auth/revoke`; only a SHA-256 hash is stored, so a database disclosure alone isn't a usable credential. |
+| Cross-owner data access | Every query filters by `owner_id` derived from the verified token, never from client-supplied input. |
+| Cross-calendar data access | `calendar_id` is always checked alongside `owner_id` in the same query — a token for one owner can't be pointed at another owner's calendar id to read/write it (the `WHERE owner_id = ... AND calendar_id = ...` combination fails to match if they don't actually belong together). |
+| Oversized/malformed request body | `readJson()` already used by every route rejects non-JSON/non-object bodies; field-level validation (`server/snapcal-api/_lib/validate.ts`) rejects wrong types and truncates overlong strings before they reach a query. |
+| Duplicate event from a retried request | `client_mutation_id` + partial unique index — see "Idempotent writes." |
+| Silent data loss from a race | `expectedRevision` compare-and-set — see "Conflict semantics." |
+| Browser CORS abuse | This API is not intended as a general browser API for arbitrary origins; the existing `androidCorsHeaders()` allowance in `_lib/http.ts` is scoped to the packaged Android app's exact origin only. The SnapCal web page itself is same-origin (`kcxlabs.org` calling `kcxlabs.org/api/...`), so no additional CORS grant was needed for it. |
+| Privileged credentials reaching the browser | Unchanged from the existing architecture: `DATABASE_URL` etc. are read only in `server/media-api/_lib/config.ts`, never `VITE_`-prefixed, never referenced from `src/`. SnapCal introduces no new secret. |
+
+**Known limitation, disclosed rather than hidden**: because `requireDevice()`
+calls the full `loadAppConfig()` (which also validates R2 configuration),
+a SnapCal-only deployment would still require R2 environment variables to be
+present, even though SnapCal itself never uses R2. This is a real coupling,
+acceptable today because this Vercel project already serves the Media
+Center (which does need R2) — a future split into fully independent
+services would need `loadAppConfig()` broken into truly independent
+per-domain loaders. Not addressed in Phase 7A to avoid a speculative
+refactor of working, unrelated code.
+
+FullName
+--------
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\routes\calendars.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\routes\health.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\routes\auth\login.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\routes\auth\logout.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\routes\events\[id].ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\routes\events\index.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\_lib\db.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\_lib\ids.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\_lib\types.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\_lib\validate.ts
+D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\_lib\version.ts
+import { calendarRepository, createDb } from "../_lib/db.js";
+import { generateCalendarId } from "../_lib/ids.js";
+import { internalError, isResponse, json, requireMethod, requireOwnerOrDevice, toNodeHandler } from "../../media-api/_lib/http.js";
+
+/**
+ * GET /api/snapcal/v1/calendars — the authenticated owner's calendars.
+ * Auto-provisions a default calendar on first call so a brand-new client
+ * never sees an empty "no calendar" state, mirroring KsnapCalx desktop's
+ * own first-launch seeding.
+ */
+async function handler(request: Request): Promise<Response> {
+  const methodError = requireMethod(request, "GET");
+  if (methodError) return methodError;
+
+  const context = await requireOwnerOrDevice(request);
+  if (isResponse(context)) return context;
+
+  try {
+    const repo = calendarRepository(createDb(context.config.database));
+    await repo.ensureDefault({ id: generateCalendarId(), ownerId: context.ownerId, name: "My Calendar", color: "#8b5cf6" });
+    const calendars = await repo.listForOwner(context.ownerId);
+    return json(200, { calendars });
+  } catch (error) {
+    return internalError(error, context.config);
+  }
+}
+
+export default toNodeHandler(handler);
+import { json, requireMethod, toNodeHandler } from "../../media-api/_lib/http.js";
+import { SNAPCAL_API_VERSION } from "../_lib/version.js";
+
+/** Public, privacy-safe liveness/version check — no auth required, matches KsnapCalx's own local /api/v1/health contract. */
+async function handler(request: Request): Promise<Response> {
+  const methodError = requireMethod(request, "GET");
+  if (methodError) return methodError;
+
+  return json(200, {
+    ok: true,
+    service: "SnapCal",
+    apiVersion: SNAPCAL_API_VERSION,
+    status: "ready",
+  });
+}
+
+export default toNodeHandler(handler);
+import { signSession, verifyPassword } from "../../../media-api/_lib/auth.js";
+import { loadAppConfig } from "../../../media-api/_lib/config.js";
+import { json, readJson, requireMethod, SINGLE_OWNER_ID, SNAPCAL_SESSION_COOKIE, toNodeHandler } from "../../../media-api/_lib/http.js";
+
+/** 7 days, a reasonable "stay signed in on this browser" window for the single-owner web calendar. */
+const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * POST /api/snapcal/v1/auth/login — browser session login for the SnapCal
+ * web calendar. Checks the same owner email/password as `POST /api/auth/pair`
+ * (device pairing), but issues nothing in the response body: on success it
+ * sets an HttpOnly, Secure, SameSite=Lax cookie scoped to `/api/snapcal`
+ * carrying `signSession(ownerId, sessionSecret)`. Unlike device pairing,
+ * there is no bearer token for a browser to store — the cookie is the only
+ * credential, and `requireOwnerOrDevice()` is what accepts it on every
+ * protected SnapCal route.
+ */
+async function handler(request: Request): Promise<Response> {
+  const methodError = requireMethod(request, "POST");
+  if (methodError) return methodError;
+
+  const body = await readJson(request);
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body?.password === "string" ? body.password : "";
+  if (!email || !password) {
+    return json(400, { error: { code: "INVALID_REQUEST", message: "email and password are required." } });
+  }
+
+  const config = loadAppConfig();
+  if (email !== config.auth.ownerEmail.toLowerCase() || !(await verifyPassword(password, config.auth.ownerPasswordHash))) {
+    return json(401, { error: { code: "INVALID_CREDENTIALS", message: "Incorrect email or password." } });
+  }
+
+  const cookieValue = signSession(SINGLE_OWNER_ID, config.auth.sessionSecret);
+  const cookie = [
+    `${SNAPCAL_SESSION_COOKIE}=${encodeURIComponent(cookieValue)}`,
+    "Path=/api/snapcal",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    `Max-Age=${SESSION_MAX_AGE_SECONDS}`,
+  ].join("; ");
+
+  return json(200, { ok: true }, { "Set-Cookie": cookie });
+}
+
+export default toNodeHandler(handler);
+import { json, requireMethod, SNAPCAL_SESSION_COOKIE, toNodeHandler } from "../../../media-api/_lib/http.js";
+
+/**
+ * POST /api/snapcal/v1/auth/logout — clears the SnapCal browser session
+ * cookie. No auth required to call this: clearing a cookie that was never
+ * valid, or is already gone, is a harmless no-op, matching the "duplicate
+ * delete is a non-destructive success" pattern used elsewhere in this API.
+ */
+async function handler(request: Request): Promise<Response> {
+  const methodError = requireMethod(request, "POST");
+  if (methodError) return methodError;
+
+  const cookie = [`${SNAPCAL_SESSION_COOKIE}=`, "Path=/api/snapcal", "HttpOnly", "Secure", "SameSite=Lax", "Max-Age=0"].join("; ");
+
+  return json(200, { ok: true }, { "Set-Cookie": cookie });
+}
+
+export default toNodeHandler(handler);
+Get-Content: 
+Line |
+  18 |              Get-Content $_.FullName
+     |              ~~~~~~~~~~~~~~~~~~~~~~~
+     | An object at the specified path D:\KCxProjects\KCxLabs-media-promote\server\snapcal-api\routes\events\[id].ts does not exist, or has been filtered by the -Include or -Exclude parameter.
+import { createDb, eventRepository } from "../../_lib/db.js";
+import { generateEventId } from "../../_lib/ids.js";
+import { validateNewEvent } from "../../_lib/validate.js";
+import {
+  internalError,
+  isResponse,
+  json,
+  readJson,
+  requestUrl,
+  requireOwnerOrDevice,
+  toNodeHandler,
+} from "../../../media-api/_lib/http.js";
+
+/**
+ * GET  /api/snapcal/v1/events?calendarId=...              full listing (excludes tombstones)
+ * GET  /api/snapcal/v1/events?calendarId=...&sinceRevision=N   incremental pull since revision N (includes tombstones)
+ * POST /api/snapcal/v1/events                              create (body includes calendarId)
+ *
+ * This single query is the entire sync protocol's pull side — see
+ * docs/snapcal-architecture.md. Clients never re-download the whole
+ * calendar; they persist the highest revision they've seen and pass it back
+ * as `sinceRevision` next time.
+ */
+async function handler(request: Request): Promise<Response> {
+  const context = await requireOwnerOrDevice(request);
+  if (isResponse(context)) return context;
+
+  const repo = eventRepository(createDb(context.config.database));
+
+  if (request.method === "GET") {
+    const url = requestUrl(request);
+    const calendarId = url.searchParams.get("calendarId");
+    if (!calendarId) return json(400, { error: { code: "INVALID_REQUEST", message: "calendarId is required." } });
+
+    const sinceRevisionRaw = url.searchParams.get("sinceRevision");
+    try {
+      if (sinceRevisionRaw !== null) {
+        const sinceRevision = Number(sinceRevisionRaw);
+        if (!Number.isFinite(sinceRevision) || sinceRevision < 0) {
+          return json(400, { error: { code: "INVALID_REQUEST", message: "sinceRevision must be a non-negative number." } });
+        }
+        const events = await repo.changesSince(context.ownerId, calendarId, sinceRevision);
+        const cursor = events.length > 0 ? events[events.length - 1].revision : sinceRevision;
+        return json(200, { events, cursor });
+      }
+
+      const events = await repo.listForCalendar(context.ownerId, calendarId);
+      const cursor = events.reduce((max, event) => Math.max(max, event.revision), 0);
+      return json(200, { events, cursor });
+    } catch (error) {
+      return internalError(error, context.config);
+    }
+  }
+
+  if (request.method === "POST") {
+    const body = await readJson(request);
+    if (!body) return json(400, { error: { code: "INVALID_REQUEST", message: "Request body must be JSON." } });
+
+    const calendarId = typeof body.calendarId === "string" ? body.calendarId : "";
+    if (!calendarId) return json(400, { error: { code: "INVALID_REQUEST", message: "calendarId is required." } });
+
+    const validation = validateNewEvent(body);
+    if (!validation.ok) return json(400, { error: { code: "INVALID_REQUEST", message: validation.error } });
+
+    try {
+      const { event, duplicate } = await repo.create({
+        id: generateEventId(),
+        ownerId: context.ownerId,
+        calendarId,
+        ...validation.value,
+      });
+      return json(duplicate ? 200 : 201, { event, duplicate });
+    } catch (error) {
+      return internalError(error, context.config);
+    }
+  }
+
+  return json(405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or POST." } }, { Allow: "GET, POST" });
+}
+
+export default toNodeHandler(handler);
+/**
+ * SnapCal Neon (Postgres) access layer.
+ *
+ * Reuses the same `Db`/`createDb` connection primitive as the Media API
+ * (`server/media-api/_lib/db.ts`) — there is exactly one way this codebase
+ * talks to Neon. All SnapCal SQL lives here; route handlers never write SQL
+ * themselves. See `db/migrations/002_snapcal_init.sql` for the schema and
+ * sync-design rationale this layer implements.
+ */
+
+import { createDb, type Db } from "../../media-api/_lib/db.js";
+import type { NewSnapCalEventInput, SnapCalCalendar, SnapCalEvent, UpdateSnapCalEventInput } from "./types.js";
+
+export { createDb, type Db };
+
+type Row = Record<string, unknown>;
+
+const asString = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
+const asNullableString = (value: unknown): string | null =>
+  value === null || value === undefined ? null : String(value);
+const asNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+/** Postgres BIGINT arrives as a string; Number() would silently lose precision above 2^53, but revisions realistically never get that large. */
+const asRevision = (value: unknown): number => {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const asDate = (value: unknown): string =>
+  value instanceof Date ? value.toISOString() : String(value ?? "");
+const asNullableDate = (value: unknown): string | null =>
+  value === null || value === undefined ? null : value instanceof Date ? value.toISOString() : String(value);
+
+function mapCalendarRow(row: Row): SnapCalCalendar {
+  return {
+    id: asString(row.id),
+    ownerId: asString(row.owner_id),
+    name: asString(row.name),
+    color: asString(row.color),
+    revision: asRevision(row.revision),
+    deletedAt: asNullableDate(row.deleted_at),
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  };
+}
+
+function mapEventRow(row: Row): SnapCalEvent {
+  return {
+    id: asString(row.id),
+    calendarId: asString(row.calendar_id),
+    ownerId: asString(row.owner_id),
+    title: asString(row.title),
+    description: asNullableString(row.description),
+    location: asNullableString(row.location),
+    startAt: asDate(row.start_at),
+    endAt: asDate(row.end_at),
+    allDay: row.all_day === true,
+    timezone: asString(row.timezone),
+    categoryId: asNullableString(row.category_id),
+    reminderOffsetMinutes: asNullableNumber(row.reminder_offset_minutes),
+    recurrenceFrequency: asNullableString(row.recurrence_frequency),
+    recurrenceInterval: asNullableNumber(row.recurrence_interval),
+    recurrenceUntilDate: asNullableString(row.recurrence_until_date),
+    recurrenceOccurrenceCount: asNullableNumber(row.recurrence_occurrence_count),
+    clientMutationId: asNullableString(row.client_mutation_id),
+    revision: asRevision(row.revision),
+    deletedAt: asNullableDate(row.deleted_at),
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  };
+}
+
+// ─── Calendar repository ─────────────────────────────────────────────────────
+
+export function calendarRepository(db: Db) {
+  return {
+    async listForOwner(ownerId: string): Promise<SnapCalCalendar[]> {
+      const rows = await db`
+        SELECT * FROM snapcal_calendars
+        WHERE owner_id = ${ownerId} AND deleted_at IS NULL
+        ORDER BY created_at ASC
+      `;
+      return rows.map(mapCalendarRow);
+    },
+
+    async getById(ownerId: string, id: string): Promise<SnapCalCalendar | null> {
+      const rows = await db`
+        SELECT * FROM snapcal_calendars WHERE id = ${id} AND owner_id = ${ownerId} AND deleted_at IS NULL
+      `;
+      return rows.length === 0 ? null : mapCalendarRow(rows[0]);
+    },
+
+    /**
+     * Get-or-create the owner's default calendar. Idempotent: safe to call on
+     * every request that needs a calendar to exist, mirroring KsnapCalx
+     * desktop's own "seed a default calendar on first launch" behavior.
+     */
+    async ensureDefault(input: { id: string; ownerId: string; name: string; color: string }): Promise<SnapCalCalendar> {
+      const existing = await db`
+        SELECT * FROM snapcal_calendars WHERE owner_id = ${input.ownerId} AND deleted_at IS NULL
+        ORDER BY created_at ASC LIMIT 1
+      `;
+      if (existing.length > 0) return mapCalendarRow(existing[0]);
+
+      const rows = await db`
+        INSERT INTO snapcal_calendars (id, owner_id, name, color, revision)
+        VALUES (${input.id}, ${input.ownerId}, ${input.name}, ${input.color}, nextval('snapcal_revision_seq'))
+        RETURNING *
+      `;
+      return mapCalendarRow(rows[0]);
+    },
+  };
+}
+
+// ─── Event repository ────────────────────────────────────────────────────────
+
+export type EventMutationResult =
+  | { status: "ok"; event: SnapCalEvent }
+  | { status: "not_found" }
+  | { status: "conflict"; current: SnapCalEvent };
+
+export function eventRepository(db: Db) {
+  return {
+    async listForCalendar(ownerId: string, calendarId: string, limit = 500): Promise<SnapCalEvent[]> {
+      const rows = await db`
+        SELECT * FROM snapcal_events
+        WHERE owner_id = ${ownerId} AND calendar_id = ${calendarId} AND deleted_at IS NULL
+        ORDER BY start_at ASC
+        LIMIT ${Math.min(limit, 2000)}
+      `;
+      return rows.map(mapEventRow);
+    },
+
+    async getById(ownerId: string, calendarId: string, id: string): Promise<SnapCalEvent | null> {
+      const rows = await db`
+        SELECT * FROM snapcal_events
+        WHERE id = ${id} AND owner_id = ${ownerId} AND calendar_id = ${calendarId} AND deleted_at IS NULL
+      `;
+      return rows.length === 0 ? null : mapEventRow(rows[0]);
+    },
+
+    /**
+     * Incremental pull: every row (including tombstones) with a revision
+     * greater than the client's cursor. This is the ONLY sync query — clients
+     * never re-download the whole calendar. Ordered by revision so a client
+     * that stops partway through a large batch can resume with
+     * `sinceRevision = lastSeenRevision` safely.
+     */
+    async changesSince(ownerId: string, calendarId: string, sinceRevision: number, limit = 500): Promise<SnapCalEvent[]> {
+      const rows = await db`
+        SELECT * FROM snapcal_events
+        WHERE owner_id = ${ownerId} AND calendar_id = ${calendarId} AND revision > ${sinceRevision}
+        ORDER BY revision ASC
+        LIMIT ${Math.min(limit, 2000)}
+      `;
+      return rows.map(mapEventRow);
+    },
+
+    /**
+     * Idempotent create: retrying the same `clientMutationId` against the
+     * same calendar returns the already-created event instead of inserting a
+     * duplicate. `duplicate: true` tells the caller this was a retry, not a
+     * new event — mirrors the desktop's exact-image-hash duplicate signal.
+     */
+    async create(input: { id: string; ownerId: string; calendarId: string } & NewSnapCalEventInput): Promise<{ event: SnapCalEvent; duplicate: boolean }> {
+      const rows = await db`
+        INSERT INTO snapcal_events (
+          id, calendar_id, owner_id, title, description, location,
+          start_at, end_at, all_day, timezone, category_id,
+          reminder_offset_minutes, recurrence_frequency, recurrence_interval,
+          recurrence_until_date, recurrence_occurrence_count,
+          client_mutation_id, revision
+        ) VALUES (
+          ${input.id}, ${input.calendarId}, ${input.ownerId}, ${input.title}, ${input.description}, ${input.location},
+          ${input.startAt}, ${input.endAt}, ${input.allDay}, ${input.timezone}, ${input.categoryId},
+          ${input.reminderOffsetMinutes}, ${input.recurrenceFrequency}, ${input.recurrenceInterval},
+          ${input.recurrenceUntilDate}, ${input.recurrenceOccurrenceCount},
+          ${input.clientMutationId}, nextval('snapcal_revision_seq')
+        )
+        ON CONFLICT (calendar_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL DO NOTHING
+        RETURNING *
+      `;
+      if (rows.length > 0) return { event: mapEventRow(rows[0]), duplicate: false };
+
+      // Conflict on client_mutation_id: this is a retry. Return the original.
+      const existing = await db`
+        SELECT * FROM snapcal_events
+        WHERE calendar_id = ${input.calendarId} AND client_mutation_id = ${input.clientMutationId}
+      `;
+      return { event: mapEventRow(existing[0]), duplicate: true };
+    },
+
+    /**
+     * Optimistic-concurrency update. `expectedRevision` must match the
+     * event's current revision or the write is refused — see
+     * docs/snapcal-architecture.md's conflict-semantics section for why a
+     * simple compare-and-set was chosen over a merge strategy.
+     */
+    async update(input: { id: string; ownerId: string; calendarId: string; expectedRevision: number } & UpdateSnapCalEventInput): Promise<EventMutationResult> {
+      const rows = await db`
+        UPDATE snapcal_events SET
+          title = COALESCE(${input.title ?? null}, title),
+          description = CASE WHEN ${input.description !== undefined} THEN ${input.description ?? null} ELSE description END,
+          location = CASE WHEN ${input.location !== undefined} THEN ${input.location ?? null} ELSE location END,
+          start_at = COALESCE(${input.startAt ?? null}, start_at),
+          end_at = COALESCE(${input.endAt ?? null}, end_at),
+          all_day = COALESCE(${input.allDay ?? null}, all_day),
+          timezone = COALESCE(${input.timezone ?? null}, timezone),
+          category_id = CASE WHEN ${input.categoryId !== undefined} THEN ${input.categoryId ?? null} ELSE category_id END,
+          reminder_offset_minutes = CASE WHEN ${input.reminderOffsetMinutes !== undefined} THEN ${input.reminderOffsetMinutes ?? null} ELSE reminder_offset_minutes END,
+          recurrence_frequency = CASE WHEN ${input.recurrenceFrequency !== undefined} THEN ${input.recurrenceFrequency ?? null} ELSE recurrence_frequency END,
+          recurrence_interval = CASE WHEN ${input.recurrenceInterval !== undefined} THEN ${input.recurrenceInterval ?? null} ELSE recurrence_interval END,
+          recurrence_until_date = CASE WHEN ${input.recurrenceUntilDate !== undefined} THEN ${input.recurrenceUntilDate ?? null} ELSE recurrence_until_date END,
+          recurrence_occurrence_count = CASE WHEN ${input.recurrenceOccurrenceCount !== undefined} THEN ${input.recurrenceOccurrenceCount ?? null} ELSE recurrence_occurrence_count END,
+          revision = nextval('snapcal_revision_seq'),
+          updated_at = now()
+        WHERE id = ${input.id} AND owner_id = ${input.ownerId} AND calendar_id = ${input.calendarId}
+          AND deleted_at IS NULL AND revision = ${input.expectedRevision}
+        RETURNING *
+      `;
+      if (rows.length > 0) return { status: "ok", event: mapEventRow(rows[0]) };
+
+      const current = await db`
+        SELECT * FROM snapcal_events
+        WHERE id = ${input.id} AND owner_id = ${input.ownerId} AND calendar_id = ${input.calendarId}
+      `;
+      if (current.length === 0) return { status: "not_found" };
+      return { status: "conflict", current: mapEventRow(current[0]) };
+    },
+
+    /** Tombstone, not DELETE — see the migration's design notes for why. */
+    async softDelete(input: { id: string; ownerId: string; calendarId: string; expectedRevision: number }): Promise<EventMutationResult> {
+      const rows = await db`
+        UPDATE snapcal_events SET
+          deleted_at = now(),
+          revision = nextval('snapcal_revision_seq'),
+          updated_at = now()
+        WHERE id = ${input.id} AND owner_id = ${input.ownerId} AND calendar_id = ${input.calendarId}
+          AND deleted_at IS NULL AND revision = ${input.expectedRevision}
+        RETURNING *
+      `;
+      if (rows.length > 0) return { status: "ok", event: mapEventRow(rows[0]) };
+
+      const current = await db`
+        SELECT * FROM snapcal_events
+        WHERE id = ${input.id} AND owner_id = ${input.ownerId} AND calendar_id = ${input.calendarId}
+      `;
+      if (current.length === 0) return { status: "not_found" };
+      if (current[0].deleted_at !== null) return { status: "ok", event: mapEventRow(current[0]) }; // already deleted: idempotent
+      return { status: "conflict", current: mapEventRow(current[0]) };
+    },
+  };
+}
+/** Identifier generation for SnapCal, mirroring server/media-api/_lib/ids.ts's conventions. */
+import { randomUUID } from "node:crypto";
+
+export function generateCalendarId(): string {
+  return `cal_${randomUUID()}`;
+}
+
+export function generateEventId(): string {
+  return `evt_${randomUUID()}`;
+}
+/** SnapCal domain types, shared by the data layer, routes, and the web calendar client. */
+
+export type SnapCalCalendar = {
+  id: string;
+  ownerId: string;
+  name: string;
+  color: string;
+  revision: number;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SnapCalEvent = {
+  id: string;
+  calendarId: string;
+  ownerId: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  timezone: string;
+  categoryId: string | null;
+  reminderOffsetMinutes: number | null;
+  recurrenceFrequency: string | null;
+  recurrenceInterval: number | null;
+  recurrenceUntilDate: string | null;
+  recurrenceOccurrenceCount: number | null;
+  clientMutationId: string | null;
+  revision: number;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Fields a client may set when creating an event. */
+export type NewSnapCalEventInput = {
+  title: string;
+  description: string | null;
+  location: string | null;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  timezone: string;
+  categoryId: string | null;
+  reminderOffsetMinutes: number | null;
+  recurrenceFrequency: string | null;
+  recurrenceInterval: number | null;
+  recurrenceUntilDate: string | null;
+  recurrenceOccurrenceCount: number | null;
+  clientMutationId: string | null;
+};
+
+/** Fields a client may change when updating an event — all optional, undefined means "leave unchanged". */
+export type UpdateSnapCalEventInput = Partial<NewSnapCalEventInput>;
+/** Request-body validation for SnapCal event mutations. Fails closed: anything unrecognized or malformed is rejected, never coerced into a best guess. */
+import type { NewSnapCalEventInput, UpdateSnapCalEventInput } from "./types.js";
+
+const MAX_TITLE_LENGTH = 300;
+const MAX_TEXT_LENGTH = 4000;
+const MAX_LOCATION_LENGTH = 500;
+const MAX_MUTATION_ID_LENGTH = 100;
+
+export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+function isIsoTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function optionalString(value: unknown, maxLength: number): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined; // signals invalid via a separate check by the caller
+  return value.slice(0, maxLength);
+}
+
+/** Validates a full new-event payload. All required fields must be present and well-formed. */
+export function validateNewEvent(body: Record<string, unknown>): ValidationResult<NewSnapCalEventInput> {
+  if (typeof body.title !== "string" || body.title.trim().length === 0) {
+    return { ok: false, error: "title is required" };
+  }
+  if (!isIsoTimestamp(body.startAt)) return { ok: false, error: "startAt must be an ISO timestamp" };
+  if (!isIsoTimestamp(body.endAt)) return { ok: false, error: "endAt must be an ISO timestamp" };
+  if (Date.parse(body.endAt as string) < Date.parse(body.startAt as string)) {
+    return { ok: false, error: "endAt must not be before startAt" };
+  }
+  if (body.allDay !== undefined && typeof body.allDay !== "boolean") {
+    return { ok: false, error: "allDay must be a boolean" };
+  }
+  if (body.timezone !== undefined && typeof body.timezone !== "string") {
+    return { ok: false, error: "timezone must be a string" };
+  }
+  if (body.description !== undefined && body.description !== null && typeof body.description !== "string") {
+    return { ok: false, error: "description must be a string or null" };
+  }
+  if (body.location !== undefined && body.location !== null && typeof body.location !== "string") {
+    return { ok: false, error: "location must be a string or null" };
+  }
+  if (body.categoryId !== undefined && body.categoryId !== null && typeof body.categoryId !== "string") {
+    return { ok: false, error: "categoryId must be a string or null" };
+  }
+  if (
+    body.reminderOffsetMinutes !== undefined &&
+    body.reminderOffsetMinutes !== null &&
+    typeof body.reminderOffsetMinutes !== "number"
+  ) {
+    return { ok: false, error: "reminderOffsetMinutes must be a number or null" };
+  }
+  if (
+    body.clientMutationId !== undefined &&
+    body.clientMutationId !== null &&
+    (typeof body.clientMutationId !== "string" || body.clientMutationId.length > MAX_MUTATION_ID_LENGTH)
+  ) {
+    return { ok: false, error: "clientMutationId must be a short string" };
+  }
+
+  return {
+    ok: true,
+    value: {
+      title: body.title.trim().slice(0, MAX_TITLE_LENGTH),
+      description: (optionalString(body.description, MAX_TEXT_LENGTH) ?? null) as string | null,
+      location: (optionalString(body.location, MAX_LOCATION_LENGTH) ?? null) as string | null,
+      startAt: new Date(body.startAt as string).toISOString(),
+      endAt: new Date(body.endAt as string).toISOString(),
+      allDay: body.allDay === true,
+      timezone: typeof body.timezone === "string" && body.timezone.length > 0 ? body.timezone.slice(0, 100) : "UTC",
+      categoryId: (body.categoryId as string | null | undefined) ?? null,
+      reminderOffsetMinutes: (body.reminderOffsetMinutes as number | null | undefined) ?? null,
+      recurrenceFrequency: typeof body.recurrenceFrequency === "string" ? body.recurrenceFrequency.slice(0, 40) : null,
+      recurrenceInterval: typeof body.recurrenceInterval === "number" ? body.recurrenceInterval : null,
+      recurrenceUntilDate: typeof body.recurrenceUntilDate === "string" ? body.recurrenceUntilDate.slice(0, 40) : null,
+      recurrenceOccurrenceCount:
+        typeof body.recurrenceOccurrenceCount === "number" ? body.recurrenceOccurrenceCount : null,
+      clientMutationId: typeof body.clientMutationId === "string" ? body.clientMutationId : null,
+    },
+  };
+}
+
+/** Validates a partial update payload — every field optional, but any field present must be well-formed. */
+export function validateEventPatch(body: Record<string, unknown>): ValidationResult<UpdateSnapCalEventInput> {
+  const value: UpdateSnapCalEventInput = {};
+
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string" || body.title.trim().length === 0) {
+      return { ok: false, error: "title must be a non-empty string" };
+    }
+    value.title = body.title.trim().slice(0, MAX_TITLE_LENGTH);
+  }
+  if (body.startAt !== undefined) {
+    if (!isIsoTimestamp(body.startAt)) return { ok: false, error: "startAt must be an ISO timestamp" };
+    value.startAt = new Date(body.startAt).toISOString();
+  }
+  if (body.endAt !== undefined) {
+    if (!isIsoTimestamp(body.endAt)) return { ok: false, error: "endAt must be an ISO timestamp" };
+    value.endAt = new Date(body.endAt).toISOString();
+  }
+  if (value.startAt !== undefined && value.endAt !== undefined && Date.parse(value.endAt) < Date.parse(value.startAt)) {
+    return { ok: false, error: "endAt must not be before startAt" };
+  }
+  if (body.allDay !== undefined) {
+    if (typeof body.allDay !== "boolean") return { ok: false, error: "allDay must be a boolean" };
+    value.allDay = body.allDay;
+  }
+  if (body.timezone !== undefined) {
+    if (typeof body.timezone !== "string" || body.timezone.length === 0) return { ok: false, error: "timezone must be a non-empty string" };
+    value.timezone = body.timezone.slice(0, 100);
+  }
+  if (body.description !== undefined) {
+    if (body.description !== null && typeof body.description !== "string") return { ok: false, error: "description must be a string or null" };
+    value.description = body.description === null ? null : body.description.slice(0, MAX_TEXT_LENGTH);
+  }
+  if (body.location !== undefined) {
+    if (body.location !== null && typeof body.location !== "string") return { ok: false, error: "location must be a string or null" };
+    value.location = body.location === null ? null : body.location.slice(0, MAX_LOCATION_LENGTH);
+  }
+  if (body.categoryId !== undefined) {
+    if (body.categoryId !== null && typeof body.categoryId !== "string") return { ok: false, error: "categoryId must be a string or null" };
+    value.categoryId = body.categoryId;
+  }
+  if (body.reminderOffsetMinutes !== undefined) {
+    if (body.reminderOffsetMinutes !== null && typeof body.reminderOffsetMinutes !== "number") {
+      return { ok: false, error: "reminderOffsetMinutes must be a number or null" };
+    }
+    value.reminderOffsetMinutes = body.reminderOffsetMinutes;
+  }
+
+  return { ok: true, value };
+}
+
+/** A request body's `expectedRevision` is required for update/delete — optimistic concurrency has no default. */
+export function parseExpectedRevision(body: Record<string, unknown>): number | null {
+  return typeof body.expectedRevision === "number" && Number.isFinite(body.expectedRevision)
+    ? body.expectedRevision
+    : null;
+}
+/** Single source of truth for the SnapCal API version. Kept in its own file so route modules stay default-export-only (mixing named and default exports in an esbuild-bundled route trips a real Node CJS/ESM interop quirk where the default import resolves to the whole module object instead of the unwrapped default). */
+export const SNAPCAL_API_VERSION = 1;
+import { deviceTokenExpiry, hashDeviceToken, verifyPassword } from "../../_lib/auth.js";
+import { generateDeviceToken, generateDeviceTokenId } from "../../_lib/ids.js";
+import { authRepository, createDb } from "../../_lib/db.js";
+import { loadAppConfig } from "../../_lib/config.js";
+import { internalError, json, readJson, requireMethod, toNodeHandler } from "../../_lib/http.js";
+
+async function handler(request: Request): Promise<Response> {
+  const methodError = requireMethod(request, "POST");
+  if (methodError) return methodError;
+  const body = await readJson(request);
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body?.password === "string" ? body.password : "";
+  const deviceName = typeof body?.deviceName === "string" ? body.deviceName.trim().slice(0, 120) : "";
+  if (!email || !password || !deviceName) return json(400, { error: "invalid_request" });
+
+  const config = loadAppConfig();
+  if (email !== config.auth.ownerEmail.toLowerCase() || !(await verifyPassword(password, config.auth.ownerPasswordHash))) {
+    return json(401, { error: "invalid_credentials" });
+  }
+
+  try {
+    const auth = authRepository(createDb(config.database));
+    const ownerId = "owner_kcx";
+    await auth.ensureOwner({ id: ownerId, email: config.auth.ownerEmail, passwordHash: config.auth.ownerPasswordHash });
+    const token = generateDeviceToken();
+    const expiresAt = deviceTokenExpiry(new Date());
+    await auth.createDeviceToken({ id: generateDeviceTokenId(), ownerId, tokenHash: hashDeviceToken(token), deviceName, expiresAt });
+    return json(201, { token, expiresAt });
+  } catch (error) {
+    return internalError(error, config);
+  }
+}
+
+export default toNodeHandler(handler);
+import { authRepository, createDb } from "../../_lib/db.js";
+import { internalError, isResponse, json, readJson, requireDevice, requireMethod, toNodeHandler } from "../../_lib/http.js";
+
+async function handler(request: Request): Promise<Response> {
+  const methodError = requireMethod(request, "POST");
+  if (methodError) return methodError;
+  const context = await requireDevice(request);
+  if (isResponse(context)) return context;
+  const body = await readJson(request);
+  const deviceTokenId = typeof body?.deviceTokenId === "string" ? body.deviceTokenId : "";
+  if (!deviceTokenId) return json(400, { error: "invalid_request" });
+  try {
+    const revoked = await authRepository(createDb(context.config.database)).revokeDeviceToken(context.ownerId, deviceTokenId);
+    return revoked ? json(200, { revoked: true }) : json(404, { error: "not_found" });
+  } catch (error) {
+    return internalError(error, context.config);
+  }
+}
+
+export default toNodeHandler(handler);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
