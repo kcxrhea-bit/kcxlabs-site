@@ -24,6 +24,9 @@ import snapcalEvents from "../server/snapcal-api/routes/events/index.js";
 import snapcalEventItem from "../server/snapcal-api/routes/events/[id].js";
 import snapcalAuthLogin from "../server/snapcal-api/routes/auth/login.js";
 import snapcalAuthLogout from "../server/snapcal-api/routes/auth/logout.js";
+import snapcalPairSession from "../server/snapcal-api/routes/auth/pair-session.js";
+import snapcalPairSessionStatus from "../server/snapcal-api/routes/auth/pair-session-status.js";
+import snapcalPairRedeem from "../server/snapcal-api/routes/auth/pair-redeem.js";
 import snapcalOcrAppointment from "../server/snapcal-api/routes/ocr/appointment.js";
 
 /**
@@ -109,6 +112,8 @@ const exactRoutes: Record<string, NodeHandler> = {
   "snapcal/v1/events": snapcalEvents,
   "snapcal/v1/auth/login": snapcalAuthLogin,
   "snapcal/v1/auth/logout": snapcalAuthLogout,
+  "snapcal/v1/auth/pair/session": snapcalPairSession,
+  "snapcal/v1/auth/pair/redeem": snapcalPairRedeem,
   "snapcal/v1/ocr/appointment": snapcalOcrAppointment,
 };
 
@@ -123,6 +128,16 @@ function matchDynamic(segments: string[]): NodeHandler | null {
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "download-authorize") return archiveDownloadAuthorize; // /archive/<id>/download-authorize
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "remove-cloud-original") return archiveRemoveCloudOriginal; // /archive/<id>/remove-cloud-original
   if (segments.length === 4 && segments[0] === "snapcal" && segments[1] === "v1" && segments[2] === "events") return snapcalEventItem; // /snapcal/v1/events/<id>
+  if (
+    segments.length === 6 &&
+    segments[0] === "snapcal" &&
+    segments[1] === "v1" &&
+    segments[2] === "auth" &&
+    segments[3] === "pair" &&
+    segments[4] === "session"
+  ) {
+    return snapcalPairSessionStatus; // /snapcal/v1/auth/pair/session/<id>
+  }
   return null;
 }
 

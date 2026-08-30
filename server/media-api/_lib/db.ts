@@ -576,6 +576,88 @@ export function authRepository(db: Db) {
   };
 }
 
+// ─── Pairing sessions (QR / short-code device pairing) ──────────────────────
+
+export type PairingSessionRow = {
+  id: string;
+  ownerId: string;
+  secretHash: string;
+  codeHash: string;
+  attemptCount: number;
+  deviceTokenId: string | null;
+  expiresAt: string;
+  redeemedAt: string | null;
+};
+
+function mapPairingSessionRow(row: MediaRow): PairingSessionRow {
+  return {
+    id: asString(row.id),
+    ownerId: asString(row.owner_id),
+    secretHash: asString(row.secret_hash),
+    codeHash: asString(row.code_hash),
+    attemptCount: asNumber(row.attempt_count),
+    deviceTokenId: asNullableString(row.device_token_id),
+    expiresAt: asString(asDate(row.expires_at)),
+    redeemedAt: asDate(row.redeemed_at),
+  };
+}
+
+export function pairingRepository(db: Db) {
+  return {
+    async create(input: {
+      id: string;
+      ownerId: string;
+      secretHash: string;
+      codeHash: string;
+      expiresAt: string;
+    }): Promise<void> {
+      await db`
+        INSERT INTO snapcal_pairing_sessions (id, owner_id, secret_hash, code_hash, expires_at)
+        VALUES (${input.id}, ${input.ownerId}, ${input.secretHash}, ${input.codeHash}, ${input.expiresAt})
+      `;
+    },
+
+    async byId(id: string): Promise<PairingSessionRow | null> {
+      const rows = await db`SELECT * FROM snapcal_pairing_sessions WHERE id = ${id}`;
+      return rows.length === 0 ? null : mapPairingSessionRow(rows[0]);
+    },
+
+    async bySecretHash(secretHash: string): Promise<PairingSessionRow | null> {
+      const rows = await db`SELECT * FROM snapcal_pairing_sessions WHERE secret_hash = ${secretHash}`;
+      return rows.length === 0 ? null : mapPairingSessionRow(rows[0]);
+    },
+
+    /** Live (unredeemed, unexpired) sessions for an owner — small set, single-owner system. */
+    async activeForOwner(ownerId: string, now: Date): Promise<PairingSessionRow[]> {
+      const rows = await db`
+        SELECT * FROM snapcal_pairing_sessions
+        WHERE owner_id = ${ownerId} AND redeemed_at IS NULL AND expires_at > ${now.toISOString()}
+      `;
+      return rows.map(mapPairingSessionRow);
+    },
+
+    async incrementAttempt(id: string): Promise<void> {
+      await db`UPDATE snapcal_pairing_sessions SET attempt_count = attempt_count + 1 WHERE id = ${id}`;
+    },
+
+    /**
+     * Redeem, atomically. The WHERE clause is the compare-and-set: only a
+     * session that is still unredeemed and unexpired at the moment of the
+     * UPDATE can match, so two concurrent redemption attempts can never both
+     * return a row — the second always sees zero rows updated.
+     */
+    async redeem(input: { id: string; deviceTokenId: string; now: Date }): Promise<boolean> {
+      const rows = await db`
+        UPDATE snapcal_pairing_sessions
+        SET redeemed_at = now(), device_token_id = ${input.deviceTokenId}
+        WHERE id = ${input.id} AND redeemed_at IS NULL AND expires_at > ${input.now.toISOString()}
+        RETURNING id
+      `;
+      return rows.length > 0;
+    },
+  };
+}
+
 // ─── Event log ───────────────────────────────────────────────────────────────
 
 /**

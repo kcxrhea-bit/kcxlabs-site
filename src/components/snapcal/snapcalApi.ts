@@ -129,6 +129,28 @@ export function logout(): Promise<{ ok: true }> {
   return request("/auth/logout", { method: "POST" });
 }
 
+// ─── Device pairing ──────────────────────────────────────────────────────────
+
+export type PairingQrPayload = { p: string; v: number; origin: string; sid: string; s: string };
+
+export type PairingSession = {
+  sessionId: string;
+  code: string;
+  expiresAt: string;
+  qrPayload: PairingQrPayload;
+};
+
+export type PairingSessionStatus = { status: "waiting" | "connected" | "expired"; expiresAt: string };
+
+/** Starts a "Connect Device" pairing session. QR secret and short code are returned exactly once. */
+export function createPairingSession(): Promise<PairingSession> {
+  return request("/auth/pair/session", { method: "POST", body: JSON.stringify({}) });
+}
+
+export function getPairingSessionStatus(sessionId: string): Promise<PairingSessionStatus> {
+  return request(`/auth/pair/session/${encodeURIComponent(sessionId)}`, { method: "GET" });
+}
+
 // ─── Calendars ───────────────────────────────────────────────────────────────
 
 export async function getCalendars(): Promise<SnapCalCalendar[]> {

@@ -110,6 +110,14 @@ await Promise.all([
     format: "cjs",
     outfile: "dist-electron/lib/snapcal-validate-ocr.cjs",
   }),
+  // QR/short-code pairing primitives — dependency-free (node:crypto only),
+  // same rationale as the other standalone lib bundles above.
+  build({
+    ...shared,
+    entryPoints: ["server/snapcal-api/_lib/pairing.ts"],
+    format: "cjs",
+    outfile: "dist-electron/lib/snapcal-pairing.cjs",
+  }),
   // Cloud Vision OAuth + annotate client, bundled standalone so their tests
   // can inject a fake `fetch` and never make a real network call.
   build({
@@ -135,6 +143,9 @@ await Promise.all([
       "server/snapcal-api/routes/events/[id].ts",
       "server/snapcal-api/routes/auth/login.ts",
       "server/snapcal-api/routes/auth/logout.ts",
+      "server/snapcal-api/routes/auth/pair-session.ts",
+      "server/snapcal-api/routes/auth/pair-session-status.ts",
+      "server/snapcal-api/routes/auth/pair-redeem.ts",
       "server/snapcal-api/routes/ocr/appointment.ts",
     ],
     format: "cjs",

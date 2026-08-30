@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, LogOut, Plus, RefreshCcw } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, LogOut, Plus, RefreshCcw, Smartphone } from "lucide-react";
 import { CalendarGrid } from "../snapcal/CalendarGrid";
+import { ConnectDevicePanel } from "../snapcal/ConnectDevicePanel";
 import { EventModal } from "../snapcal/EventModal";
 import { LoginGate } from "../snapcal/LoginGate";
 import {
@@ -30,6 +31,7 @@ export function SnapCalPage() {
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalState, setModalState] = useState<{ existing: SnapCalEvent | null; day: Date | null } | null>(null);
+  const [showConnectDevice, setShowConnectDevice] = useState(false);
 
   const loadCalendars = useCallback(async () => {
     setLoadError(null);
@@ -156,6 +158,10 @@ export function SnapCalPage() {
                 ))}
               </select>
             ) : null}
+            <button type="button" onClick={() => setShowConnectDevice(true)} className="button-secondary focus-ring">
+              <Smartphone size={15} />
+              Connect Device
+            </button>
             <button type="button" onClick={handleLogout} className="button-secondary focus-ring">
               <LogOut size={15} />
               Sign Out
@@ -224,6 +230,8 @@ export function SnapCalPage() {
           onDelete={handleDelete}
         />
       ) : null}
+
+      {showConnectDevice ? <ConnectDevicePanel onClose={() => setShowConnectDevice(false)} /> : null}
     </section>
   );
 }
