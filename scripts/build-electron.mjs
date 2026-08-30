@@ -95,6 +95,30 @@ await Promise.all([
     outbase: "server/media-api/routes",
     outExtension: { ".js": ".cjs" },
   }),
+  // Dependency-free SnapCal validation logic, bundled standalone (like
+  // api-core.cjs) so its unit tests exercise the same compiled code the
+  // route handlers import, without pulling in the Neon driver.
+  build({
+    ...shared,
+    entryPoints: ["server/snapcal-api/_lib/validate.ts"],
+    format: "cjs",
+    outfile: "dist-electron/lib/snapcal-validate.cjs",
+  }),
+  // SnapCal routes, same rationale as the media-api routes above: bundled
+  // as-is so adapter tests can invoke the real `toNodeHandler` export.
+  build({
+    ...shared,
+    entryPoints: [
+      "server/snapcal-api/routes/health.ts",
+      "server/snapcal-api/routes/calendars.ts",
+      "server/snapcal-api/routes/events/index.ts",
+      "server/snapcal-api/routes/events/[id].ts",
+    ],
+    format: "cjs",
+    outdir: "dist-electron/routes",
+    outbase: "server/snapcal-api/routes",
+    outExtension: { ".js": ".cjs" },
+  }),
   // The single Vercel Function entrypoint, bundled so a test can prove its
   // routing table (`resolveRoute`) sends every one of the 17 real URLs to the
   // correct route module, and that the vercel.json rewrite's __kcx_path
