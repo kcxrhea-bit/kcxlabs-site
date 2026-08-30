@@ -17,6 +17,7 @@ export const publicRoutes = [
   "clips",
   "share",
   "kids-access",
+  "snapcal",
 ] as const;
 
 export type PublicRoute = (typeof publicRoutes)[number];
@@ -29,6 +30,7 @@ export const publicRoutePaths: Record<Exclude<PublicRoute, "home">, string> = {
   clips: "/clips",
   share: "/c/:publicId",
   "kids-access": "/kids-access",
+  snapcal: "/snapcal",
 };
 
 /** Legacy paths kept only as permanent redirects. Never link to these. */
@@ -57,6 +59,8 @@ export function resolvePublicRoute(pathname: string): PublicRoute {
       return "clips";
     case "/kids-access":
       return "kids-access";
+    case "/snapcal":
+      return "snapcal";
     default:
       return "home";
   }

@@ -7,7 +7,7 @@ import {
   json,
   readJson,
   requestUrl,
-  requireDevice,
+  requireOwnerOrDevice,
   toNodeHandler,
 } from "../../../media-api/_lib/http.js";
 
@@ -22,7 +22,7 @@ import {
  * as `sinceRevision` next time.
  */
 async function handler(request: Request): Promise<Response> {
-  const context = await requireDevice(request);
+  const context = await requireOwnerOrDevice(request);
   if (isResponse(context)) return context;
 
   const repo = eventRepository(createDb(context.config.database));

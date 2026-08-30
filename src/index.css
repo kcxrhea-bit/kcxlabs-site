@@ -264,6 +264,32 @@ a:focus-visible {
   }
 }
 
+.snapcal-input {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.32);
+  padding: 0.65rem 0.8rem;
+  color: #e7edf2;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.snapcal-input:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.snapcal-input:focus {
+  border-color: rgba(255, 122, 26, 0.6);
+  background: rgba(0, 0, 0, 0.44);
+  outline: none;
+}
+
+.snapcal-input::placeholder {
+  color: #8e9197;
+}
+
 .micro-panel {
   border: 1px solid rgba(255, 255, 255, 0.09);
   background:

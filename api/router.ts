@@ -22,10 +22,12 @@ import snapcalHealth from "../server/snapcal-api/routes/health.js";
 import snapcalCalendars from "../server/snapcal-api/routes/calendars.js";
 import snapcalEvents from "../server/snapcal-api/routes/events/index.js";
 import snapcalEventItem from "../server/snapcal-api/routes/events/[id].js";
+import snapcalAuthLogin from "../server/snapcal-api/routes/auth/login.js";
+import snapcalAuthLogout from "../server/snapcal-api/routes/auth/logout.js";
 
 /**
  * Single Vercel Function fronting the entire Media Center AND SnapCal APIs, to stay under the
- * Hobby plan's 12-function cap (there are 21 distinct routes). Every imported module is the original,
+ * Hobby plan's 12-function cap (there are 23 distinct routes). Every imported module is the original,
  * untouched route logic from `server/media-api/routes/*` — only relocated out of `api/` so
  * Vercel's function discovery no longer counts each one separately; each still ends in the same
  * `export default toNodeHandler(handler)` it always did. This file's only job is picking which
@@ -104,6 +106,8 @@ const exactRoutes: Record<string, NodeHandler> = {
   "snapcal/v1/health": snapcalHealth,
   "snapcal/v1/calendars": snapcalCalendars,
   "snapcal/v1/events": snapcalEvents,
+  "snapcal/v1/auth/login": snapcalAuthLogin,
+  "snapcal/v1/auth/logout": snapcalAuthLogout,
 };
 
 function matchDynamic(segments: string[]): NodeHandler | null {

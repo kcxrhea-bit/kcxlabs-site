@@ -4,6 +4,7 @@ import { KidsAccessPage } from "./components/pages/KidsAccessPage";
 import { ClipsPage, SharePage } from "./components/pages/MediaPublicPages";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
+import { SnapCalPage } from "./components/pages/SnapCalPage";
 import { EcosystemSection } from "./components/sections/EcosystemSection";
 import { FuturePreviewSection } from "./components/sections/FuturePreviewSection";
 import { HeroSection } from "./components/sections/HeroSection";
@@ -36,6 +37,8 @@ export default function App() {
         <SharePage />
       ) : route === "kids-access" ? (
         <KidsAccessPage />
+      ) : route === "snapcal" ? (
+        <SnapCalPage />
       ) : (
         <>
           <HeroSection />
