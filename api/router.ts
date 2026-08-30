@@ -24,6 +24,7 @@ import snapcalEvents from "../server/snapcal-api/routes/events/index.js";
 import snapcalEventItem from "../server/snapcal-api/routes/events/[id].js";
 import snapcalAuthLogin from "../server/snapcal-api/routes/auth/login.js";
 import snapcalAuthLogout from "../server/snapcal-api/routes/auth/logout.js";
+import snapcalOcrAppointment from "../server/snapcal-api/routes/ocr/appointment.js";
 
 /**
  * Single Vercel Function fronting the entire Media Center AND SnapCal APIs, to stay under the
@@ -108,6 +109,7 @@ const exactRoutes: Record<string, NodeHandler> = {
   "snapcal/v1/events": snapcalEvents,
   "snapcal/v1/auth/login": snapcalAuthLogin,
   "snapcal/v1/auth/logout": snapcalAuthLogout,
+  "snapcal/v1/ocr/appointment": snapcalOcrAppointment,
 };
 
 function matchDynamic(segments: string[]): NodeHandler | null {

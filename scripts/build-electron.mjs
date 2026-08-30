@@ -104,6 +104,26 @@ await Promise.all([
     format: "cjs",
     outfile: "dist-electron/lib/snapcal-validate.cjs",
   }),
+  build({
+    ...shared,
+    entryPoints: ["server/snapcal-api/_lib/validateOcr.ts"],
+    format: "cjs",
+    outfile: "dist-electron/lib/snapcal-validate-ocr.cjs",
+  }),
+  // Cloud Vision OAuth + annotate client, bundled standalone so their tests
+  // can inject a fake `fetch` and never make a real network call.
+  build({
+    ...shared,
+    entryPoints: ["server/snapcal-api/_lib/googleVisionAuth.ts"],
+    format: "cjs",
+    outfile: "dist-electron/lib/google-vision-auth.cjs",
+  }),
+  build({
+    ...shared,
+    entryPoints: ["server/snapcal-api/_lib/googleVision.ts"],
+    format: "cjs",
+    outfile: "dist-electron/lib/google-vision.cjs",
+  }),
   // SnapCal routes, same rationale as the media-api routes above: bundled
   // as-is so adapter tests can invoke the real `toNodeHandler` export.
   build({
@@ -115,6 +135,7 @@ await Promise.all([
       "server/snapcal-api/routes/events/[id].ts",
       "server/snapcal-api/routes/auth/login.ts",
       "server/snapcal-api/routes/auth/logout.ts",
+      "server/snapcal-api/routes/ocr/appointment.ts",
     ],
     format: "cjs",
     outdir: "dist-electron/routes",

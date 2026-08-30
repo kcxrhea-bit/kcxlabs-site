@@ -21,6 +21,7 @@ import {
   loadR2Config,
   loadAnalyticsConfig,
   loadLimitsConfig,
+  loadGoogleVisionConfig,
 } from "../dist-electron/api-core.cjs";
 
 // ─── Password hashing ────────────────────────────────────────────────────────
@@ -221,6 +222,36 @@ test("analytics config is optional, so a missing token degrades rather than brea
     apiToken: "tok",
     accountId: "acct",
   });
+});
+
+test("google vision config is optional, so a missing/malformed credential degrades rather than breaks", () => {
+  assert.equal(loadGoogleVisionConfig({}), null);
+  assert.equal(loadGoogleVisionConfig({ GOOGLE_VISION_SERVICE_ACCOUNT_JSON: "not json" }), null);
+  assert.equal(loadGoogleVisionConfig({ GOOGLE_VISION_SERVICE_ACCOUNT_JSON: JSON.stringify({ client_email: "x@example.test" }) }), null);
+  assert.deepEqual(
+    loadGoogleVisionConfig({
+      GOOGLE_VISION_SERVICE_ACCOUNT_JSON: JSON.stringify({
+        client_email: "svc@ksnapcalx-vision-ocr.iam.gserviceaccount.com",
+        private_key: "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n",
+        project_id: "ksnapcalx-vision-ocr",
+      }),
+    }),
+    {
+      clientEmail: "svc@ksnapcalx-vision-ocr.iam.gserviceaccount.com",
+      privateKey: "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n",
+      projectId: "ksnapcalx-vision-ocr",
+    }
+  );
+});
+
+test("google vision config never appears verbatim in describeConfig, and is treated as a secret", () => {
+  const raw = JSON.stringify({ client_email: "x", private_key: "super-secret-key-material", project_id: "p" });
+  const report = describeConfig({ GOOGLE_VISION_SERVICE_ACCOUNT_JSON: raw });
+  const serialized = JSON.stringify(report);
+  assert.ok(!serialized.includes("super-secret-key-material"), "report leaked the service-account key");
+  const entry = report.find((e) => e.key === "GOOGLE_VISION_SERVICE_ACCOUNT_JSON");
+  assert.equal(entry.present, true);
+  assert.equal(entry.secret, true);
 });
 
 test("a malformed limit falls back to the safe default rather than to unlimited", () => {

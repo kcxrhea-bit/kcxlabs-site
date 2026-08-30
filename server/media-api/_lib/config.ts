@@ -23,6 +23,7 @@ export const SECRET_KEYS = [
   "CLOUDFLARE_ANALYTICS_TOKEN",
   "OWNER_PASSWORD_HASH",
   "SESSION_SECRET",
+  "GOOGLE_VISION_SERVICE_ACCOUNT_JSON",
 ] as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[number];
@@ -84,6 +85,13 @@ export type AuthConfig = {
   sessionSecret: string;
 };
 
+/** A GCP service-account key, parsed only enough to mint OAuth tokens. Never logged, never echoed. */
+export type GoogleVisionConfig = {
+  clientEmail: string;
+  privateKey: string;
+  projectId: string;
+};
+
 export type AppConfig = {
   database: DatabaseConfig;
   r2: R2Config;
@@ -91,6 +99,8 @@ export type AppConfig = {
   auth: AuthConfig;
   limits: LimitsConfig;
   publicSiteOrigin: string;
+  /** Null when Cloud Vision OCR is not configured — the OCR route reports 503 rather than crashing. */
+  googleVision: GoogleVisionConfig | null;
 };
 
 // ─── Individual loaders ──────────────────────────────────────────────────────
@@ -194,6 +204,37 @@ export function loadPublicSiteOrigin(env: NodeJS.ProcessEnv = process.env): stri
   return raw.replace(/\/+$/, "");
 }
 
+/**
+ * OPTIONAL by design, same policy as `loadAnalyticsConfig`: a missing or
+ * malformed credential must never break the rest of the API (calendars,
+ * events, media). Only the OCR route depends on this being non-null, and it
+ * reports that itself as a 503 rather than this function throwing and
+ * taking down every other route's config load.
+ *
+ * Never logs the raw JSON or the parsed private key — a parse failure names
+ * only which shape check failed.
+ */
+export function loadGoogleVisionConfig(env: NodeJS.ProcessEnv = process.env): GoogleVisionConfig | null {
+  const raw = read(env, "GOOGLE_VISION_SERVICE_ACCOUNT_JSON");
+  if (raw === undefined) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object") return null;
+
+  const record = parsed as Record<string, unknown>;
+  const clientEmail = typeof record.client_email === "string" ? record.client_email : null;
+  const privateKey = typeof record.private_key === "string" ? record.private_key : null;
+  const projectId = typeof record.project_id === "string" ? record.project_id : null;
+  if (clientEmail === null || privateKey === null || projectId === null) return null;
+
+  return { clientEmail, privateKey, projectId };
+}
+
 /** Everything at once. Throws a ConfigError naming what is wrong. */
 export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
@@ -203,6 +244,7 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     auth: loadAuthConfig(env),
     limits: loadLimitsConfig(env),
     publicSiteOrigin: loadPublicSiteOrigin(env),
+    googleVision: loadGoogleVisionConfig(env),
   };
 }
 
@@ -232,6 +274,7 @@ const ALL_KEYS = [
   "MONTHLY_UPLOAD_QUOTA_BYTES",
   "UPLOADS_DISABLED",
   "PUBLIC_SITE_ORIGIN",
+  "GOOGLE_VISION_SERVICE_ACCOUNT_JSON",
 ] as const;
 
 const OPTIONAL_KEYS = new Set([
@@ -242,6 +285,7 @@ const OPTIONAL_KEYS = new Set([
   "UPLOADS_DISABLED",
   "PUBLIC_SITE_ORIGIN",
   "R2_BUCKET",
+  "GOOGLE_VISION_SERVICE_ACCOUNT_JSON",
 ]);
 
 /**
