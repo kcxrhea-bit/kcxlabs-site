@@ -4,19 +4,6 @@
   "version": "0.1.0",
   "type": "module",
   "main": "dist-electron/main.cjs",
-  "scripts": {
-    "dev": "node scripts/dev-electron.mjs",
-    "dev:website": "vite",
-    "build": "tsc -b && vite build",
-    "build:electron": "node scripts/build-electron.mjs",
-    "typecheck": "tsc -b && tsc -p electron/tsconfig.json --noEmit",
-    "test": "npm run build:electron && node --test tests/*.test.mjs",
-    "preview": "vite preview",
-    "config:doctor": "node scripts/config-doctor.mjs",
-    "auth:hash": "node scripts/auth-hash.mjs",
-    "db:migrate": "node scripts/db-migrate.mjs",
-    "db:verify": "node scripts/db-verify.mjs"
-  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1107.0",
     "@aws-sdk/s3-request-presigner": "^3.1107.0",
@@ -28,6 +15,22 @@
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.8"
   },
+  "productName": "kcx-labs-site",
+  "scripts": {
+    "dev": "node scripts/dev-electron.mjs",
+    "dev:website": "vite",
+    "build": "tsc -b && vite build",
+    "build:electron": "node scripts/build-electron.mjs",
+    "typecheck": "tsc -b && tsc -p electron/tsconfig.json --noEmit",
+    "test": "npm run build:electron && node --test tests/*.test.mjs",
+    "preview": "vite preview",
+    "config:doctor": "node scripts/config-doctor.mjs",
+    "auth:hash": "node scripts/auth-hash.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:verify": "node scripts/db-verify.mjs",
+    "package:win": "npm run build:electron && electron-builder --win portable",
+    "installer": "npm run build:electron && electron-builder --win nsis"
+  },
   "devDependencies": {
     "@types/node": "^26.1.1",
     "@types/react": "^19.1.6",
@@ -37,6 +40,18 @@
     "esbuild": "^0.28.1",
     "typescript": "~5.8.3",
     "vercel": "^59.9.1",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "org.kcxlabs.kcxlabssite",
+    "productName": "kcx-labs-site",
+    "electronVersion": "43.1.1",
+    "directories": { "output": "release" },
+    "files": ["package.json", "dist/**/*", "dist-electron/**/*"],
+    "extraResources": [],
+    "extraFiles": [],
+    "win": { "target": ["portable", "nsis"] },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
   }
 }

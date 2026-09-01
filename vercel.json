@@ -1,6 +1,11 @@
 {
   "redirects": [
     {
+      "source": "/snapcal",
+      "destination": "/snapcal/",
+      "permanent": false
+    },
+    {
       "source": "/nexus-cloud",
       "destination": "/nexus",
       "permanent": true

@@ -52,6 +52,7 @@ function mapEventRow(row: Row): SnapCalEvent {
     calendarId: asString(row.calendar_id),
     ownerId: asString(row.owner_id),
     title: asString(row.title),
+    status: asString(row.status) as SnapCalEvent["status"],
     description: asNullableString(row.description),
     location: asNullableString(row.location),
     startAt: asDate(row.start_at),
@@ -167,13 +168,13 @@ export function eventRepository(db: Db) {
     async create(input: { id: string; ownerId: string; calendarId: string } & NewSnapCalEventInput): Promise<{ event: SnapCalEvent; duplicate: boolean }> {
       const rows = await db`
         INSERT INTO snapcal_events (
-          id, calendar_id, owner_id, title, description, location,
+          id, calendar_id, owner_id, title, status, description, location,
           start_at, end_at, all_day, timezone, category_id,
           reminder_offset_minutes, recurrence_frequency, recurrence_interval,
           recurrence_until_date, recurrence_occurrence_count,
           client_mutation_id, revision
         ) VALUES (
-          ${input.id}, ${input.calendarId}, ${input.ownerId}, ${input.title}, ${input.description}, ${input.location},
+          ${input.id}, ${input.calendarId}, ${input.ownerId}, ${input.title}, ${input.status}, ${input.description}, ${input.location},
           ${input.startAt}, ${input.endAt}, ${input.allDay}, ${input.timezone}, ${input.categoryId},
           ${input.reminderOffsetMinutes}, ${input.recurrenceFrequency}, ${input.recurrenceInterval},
           ${input.recurrenceUntilDate}, ${input.recurrenceOccurrenceCount},
@@ -202,6 +203,7 @@ export function eventRepository(db: Db) {
       const rows = await db`
         UPDATE snapcal_events SET
           title = COALESCE(${input.title ?? null}, title),
+          status = COALESCE(${input.status ?? null}, status),
           description = CASE WHEN ${input.description !== undefined} THEN ${input.description ?? null} ELSE description END,
           location = CASE WHEN ${input.location !== undefined} THEN ${input.location ?? null} ELSE location END,
           start_at = COALESCE(${input.startAt ?? null}, start_at),

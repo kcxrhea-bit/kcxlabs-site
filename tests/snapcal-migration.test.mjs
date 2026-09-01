@@ -88,3 +88,11 @@ test("records the migration version exactly once, at the end", () => {
   assert.match(versionInserts[0], /'002_snapcal_init'/);
   assert.equal(statements.indexOf(versionInserts[0]), statements.length - 1, "version insert must be the final statement");
 });
+
+test("004_snapcal_event_status adds a constrained scheduled default and records its version", () => {
+  const statusSource = readFileSync(join(process.cwd(), "db", "migrations", "004_snapcal_event_status.sql"), "utf8");
+  const statusStatements = withoutTransactionControls(splitSqlStatements(statusSource));
+  assert.ok(statusStatements.some((statement) => /ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'SCHEDULED'/.test(statement)));
+  assert.ok(statusStatements.some((statement) => /CHECK \(status IN \('SCHEDULED', 'COMPLETED', 'MISSED', 'DISMISSED', 'CANCELLED'\)\)/.test(statement)));
+  assert.ok(statusStatements.some((statement) => /'004_snapcal_event_status'/.test(statement)));
+});

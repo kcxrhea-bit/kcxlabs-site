@@ -2,8 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-export default defineConfig({
-  base: "/",
+export default defineConfig(({ mode }) => ({
+  base: mode === "electron" ? "./" : "/",
   plugins: [react(), tailwindcss()],
   // Dev-only: `server` is never read by `vite build`, so this has no effect
   // on the production bundle or on vercel.json's routing.
@@ -22,4 +22,4 @@ export default defineConfig({
       "/api": { target: "http://localhost:3456", changeOrigin: true },
     },
   },
-});
+}));

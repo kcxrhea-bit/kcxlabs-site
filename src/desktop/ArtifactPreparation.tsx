@@ -7,6 +7,7 @@ import type {
   DistributionSetupPlan,
   DistributionTarget,
   DistributionWorkflowResult,
+  ArtifactRecord,
 } from "../shared/desktop";
 
 const targetInfo: Record<
@@ -85,6 +86,9 @@ export function ArtifactPreparation({
   const [building, setBuilding] = useState(false);
   const [applyingSetup, setApplyingSetup] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [registeredArtifacts, setRegisteredArtifacts] = useState<ArtifactRecord[]>([]);
+  const refreshRegisteredArtifacts = async () => { try { setRegisteredArtifacts(await window.kcxDesktop!.listArtifacts()); } catch { setRegisteredArtifacts([]); } };
+  useEffect(() => { void refreshRegisteredArtifacts(); }, []);
 
   const readyTargets = useMemo(
     () =>
@@ -326,6 +330,8 @@ export function ArtifactPreparation({
 
   return (
     <section className="desktop-card" style={{ padding: "1.25rem" }}>
+      <div className="desktop-review-panel"><p className="desktop-kicker">Registered artifacts</p>{registeredArtifacts.length ? registeredArtifacts.map((artifact) => <article key={artifact.id}><strong>{artifact.filename}</strong><p>{artifact.projectName} · {artifact.version ?? "unversioned"} · {artifact.target} · Windows · {artifact.architecture}</p><p>{(artifact.bytes / 1024 / 1024).toFixed(1)} MB · {artifact.validationStatus} · {artifact.publicationStatus}{artifact.backend ? ` · ${artifact.backend}` : ""}</p><small>SHA-256: {artifact.sha256.slice(0, 16)}…</small><small className="desktop-path">{artifact.stagedPath ?? artifact.sourcePath}</small><div className="desktop-action-row"><button type="button" className="desktop-action desktop-action-secondary" onClick={async () => { await window.kcxDesktop?.verifyArtifact(artifact.id); await refreshRegisteredArtifacts(); }}>Verify integrity</button>{artifact.reconciliationAvailable ? <button type="button" className="desktop-action desktop-action-secondary" onClick={async () => { try { await window.kcxDesktop?.reconcilePublishedArtifact(artifact.id); await refreshRegisteredArtifacts(); setMessage("Published path reconciled after provider and public verification."); } catch (error) { setMessage(error instanceof Error ? error.message : "Published path reconciliation failed."); } }}>Reconcile published path</button> : null}{artifact.validationStatus === "VALIDATED" && artifact.stagedPath ? <button type="button" className="desktop-action desktop-action-secondary" onClick={async () => { try { await window.kcxDesktop?.recoverStagedArtifact(artifact.id); await refreshRegisteredArtifacts(); setMessage("Staged artifact recovered after canonical path and integrity checks."); } catch (error) { setMessage(error instanceof Error ? error.message : "Staged recovery failed."); } }}>Recover staged state</button> : null}<button type="button" className="desktop-action desktop-action-secondary" onClick={async () => { const response = await window.kcxDesktop?.copyArtifactPath(artifact.id); if (response) setMessage(response.message); }}>Copy path</button><button type="button" className="desktop-action desktop-action-secondary" onClick={async () => { const response = await window.kcxDesktop?.openArtifactFolder(artifact.id); if (response) setMessage(response.message); }}>Open folder</button></div></article>) : <p>No validated artifacts registered yet.</p>}</div>
+      <div className="desktop-action-row">{registeredArtifacts.map((artifact) => <button key={`publish-${artifact.id}`} type="button" className="desktop-action" disabled={!artifact.publicationReadiness?.ready || artifact.publicationStatus === "PUBLISHING"} onClick={async () => { setMessage("Publishing…"); try { await window.kcxDesktop?.publishArtifact(artifact.id); setRegisteredArtifacts(await window.kcxDesktop!.listArtifacts()); } catch (error) { setMessage(error instanceof Error ? error.message : "Publication failed."); } }}>{artifact.publicationStatus === "PUBLISHING" ? "Publishing…" : `Publish ${artifact.filename}`}</button>)}</div>
       <p className="desktop-kicker">Distribution Center</p>
       <h2>Build, package, stage, and publish projects</h2>
 

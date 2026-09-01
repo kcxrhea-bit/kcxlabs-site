@@ -19,6 +19,15 @@ test("validateNewEvent: a well-formed minimal event is accepted", () => {
   assert.equal(result.value.title, "Dentist");
   assert.equal(result.value.allDay, false);
   assert.equal(result.value.timezone, "UTC");
+  assert.equal(result.value.status, "SCHEDULED");
+});
+
+test("event status accepts the synchronized enum and rejects unknown values", () => {
+  const valid = validateEventPatch({ status: "COMPLETED" });
+  assert.equal(valid.ok, true);
+  assert.equal(valid.value.status, "COMPLETED");
+  assert.equal(validateEventPatch({ status: "DONE" }).ok, false);
+  assert.equal(validateNewEvent({ title: "X", startAt: "2026-09-01T10:00:00.000Z", endAt: "2026-09-01T10:30:00.000Z", status: "DONE" }).ok, false);
 });
 
 test("validateNewEvent: missing title is rejected", () => {

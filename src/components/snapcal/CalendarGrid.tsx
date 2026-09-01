@@ -1,5 +1,6 @@
 import { Clock } from "lucide-react";
 import type { SnapCalEvent } from "./snapcalApi";
+import { buildMonthGrid, eventMatchesDay } from "./calendarMath";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -9,41 +10,9 @@ type DayCell = {
   isToday: boolean;
 };
 
-function buildMonthGrid(year: number, month: number): DayCell[] {
-  const firstOfMonth = new Date(year, month, 1);
-  const startOffset = firstOfMonth.getDay();
-  const gridStart = new Date(year, month, 1 - startOffset);
-  const today = new Date();
-  const todayKey = today.toDateString();
-
-  const cells: DayCell[] = [];
-  for (let i = 0; i < 42; i += 1) {
-    const date = new Date(gridStart);
-    date.setDate(gridStart.getDate() + i);
-    cells.push({
-      date,
-      inCurrentMonth: date.getMonth() === month,
-      isToday: date.toDateString() === todayKey,
-    });
-  }
-  return cells;
-}
-
 function eventsForDay(events: SnapCalEvent[], day: Date): SnapCalEvent[] {
-  const dayKey = day.toDateString();
   return events
-    .filter((event) => {
-      if (event.allDay) {
-        // All-day events store absolute instants at day boundaries; compare by UTC date.
-        const start = new Date(event.startAt);
-        const end = new Date(event.endAt);
-        const dayUtc = Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
-        const startUtc = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
-        const endUtc = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
-        return dayUtc >= startUtc && dayUtc <= endUtc;
-      }
-      return new Date(event.startAt).toDateString() === dayKey;
-    })
+    .filter((event) => eventMatchesDay(event, day))
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
 }
 
@@ -112,15 +81,15 @@ export function CalendarGrid({ year, month, events, onSelectDay, onSelectEvent }
                         onSelectEvent(event);
                       }
                     }}
-                    className="focus-ring truncate border-l-2 border-kcx-cyan bg-kcx-cyan/10 px-1.5 py-0.5 text-[0.68rem] text-kcx-steel hover:bg-kcx-cyan/20"
-                    title={event.title}
+                    className={`focus-ring snapcal-event snapcal-event--${event.status.toLowerCase()} truncate border-l-2 px-1.5 py-0.5 text-[0.68rem] hover:bg-kcx-cyan/20`}
+                    title={`${event.title} — ${event.status.toLowerCase()}`}
                   >
                     {event.allDay ? (
-                      event.title
+                      `${event.title} · ${event.status.toLowerCase()}`
                     ) : (
                       <span className="inline-flex items-center gap-1">
                         <Clock size={10} className="shrink-0 text-kcx-cyan" />
-                        {formatTime(event.startAt)} {event.title}
+                        {formatTime(event.startAt)} {event.title} · {event.status.toLowerCase()}
                       </span>
                     )}
                   </span>

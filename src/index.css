@@ -290,6 +290,65 @@ a:focus-visible {
   color: #8e9197;
 }
 
+.snapcal-stage {
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.snapcal-art-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: saturate(1.08) contrast(1.05);
+  pointer-events: none;
+  transition: opacity 220ms ease, background-image 220ms ease;
+}
+
+.snapcal-stage::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(5, 5, 6, 0.28), rgba(5, 5, 6, 0.72) 72%, #050506 100%);
+  content: "";
+  pointer-events: none;
+}
+
+.snapcal-stage .studio-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.025) 46%, rgba(55, 213, 255, 0.055)),
+    rgba(8, 9, 14, 0.68);
+  backdrop-filter: blur(12px);
+}
+
+.snapcal-event {
+  border-color: #37d5ff;
+  background: rgb(55 213 255 / 10%);
+  color: #d7d9de;
+}
+
+.snapcal-event--completed {
+  opacity: 0.62;
+  text-decoration: line-through;
+}
+
+.snapcal-event--missed {
+  border-color: #ff8a3d;
+  background: rgb(255 138 61 / 12%);
+}
+
+.snapcal-event--dismissed,
+.snapcal-event--cancelled {
+  border-color: #8e9197;
+  opacity: 0.58;
+}
+
+.snapcal-event--cancelled {
+  text-decoration: line-through;
+}
+
 .micro-panel {
   border: 1px solid rgba(255, 255, 255, 0.09);
   background:

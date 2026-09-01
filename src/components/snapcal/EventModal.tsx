@@ -51,6 +51,7 @@ function toDateInputValue(iso: string | null): string {
 function draftFromEvent(event: SnapCalEvent): EventDraft {
   return {
     title: event.title,
+    status: event.status,
     description: event.description,
     location: event.location,
     startAt: event.startAt,
@@ -73,6 +74,7 @@ function draftFromDay(day: Date): EventDraft {
   end.setHours(10, 0, 0, 0);
   return {
     title: "",
+    status: "SCHEDULED",
     description: null,
     location: null,
     startAt: start.toISOString(),
@@ -230,6 +232,21 @@ export function EventModal({ existing, initialDay, onClose, onCreate, onUpdate, 
               onChange={(event) => update("title", event.target.value)}
               className="snapcal-input focus-ring"
             />
+          </label>
+
+          <label className="grid gap-1.5 text-xs font-bold uppercase tracking-[0.14em] text-kcx-ash">
+            Status
+            <select
+              value={draft.status}
+              onChange={(event) => update("status", event.target.value as EventDraft["status"])}
+              className="snapcal-input focus-ring"
+            >
+              <option value="SCHEDULED">Scheduled</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="MISSED">Missed</option>
+              <option value="DISMISSED">Dismissed</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
           </label>
 
           <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-kcx-ash">

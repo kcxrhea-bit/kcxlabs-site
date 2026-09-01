@@ -1,5 +1,5 @@
 /** Request-body validation for SnapCal event mutations. Fails closed: anything unrecognized or malformed is rejected, never coerced into a best guess. */
-import type { NewSnapCalEventInput, UpdateSnapCalEventInput } from "./types.js";
+import { SNAPCAL_EVENT_STATUSES, type NewSnapCalEventInput, type SnapCalEventStatus, type UpdateSnapCalEventInput } from "./types.js";
 
 const MAX_TITLE_LENGTH = 300;
 const MAX_TEXT_LENGTH = 4000;
@@ -17,6 +17,12 @@ function optionalString(value: unknown, maxLength: number): string | null | unde
   if (value === null) return null;
   if (typeof value !== "string") return undefined; // signals invalid via a separate check by the caller
   return value.slice(0, maxLength);
+}
+
+function eventStatus(value: unknown): SnapCalEventStatus | null {
+  return typeof value === "string" && SNAPCAL_EVENT_STATUSES.includes(value as SnapCalEventStatus)
+    ? (value as SnapCalEventStatus)
+    : null;
 }
 
 /** Validates a full new-event payload. All required fields must be present and well-formed. */
@@ -58,11 +64,15 @@ export function validateNewEvent(body: Record<string, unknown>): ValidationResul
   ) {
     return { ok: false, error: "clientMutationId must be a short string" };
   }
+  if (body.status !== undefined && eventStatus(body.status) === null) {
+    return { ok: false, error: "status must be a supported event status" };
+  }
 
   return {
     ok: true,
     value: {
       title: body.title.trim().slice(0, MAX_TITLE_LENGTH),
+      status: eventStatus(body.status) ?? "SCHEDULED",
       description: (optionalString(body.description, MAX_TEXT_LENGTH) ?? null) as string | null,
       location: (optionalString(body.location, MAX_LOCATION_LENGTH) ?? null) as string | null,
       startAt: new Date(body.startAt as string).toISOString(),
@@ -90,6 +100,11 @@ export function validateEventPatch(body: Record<string, unknown>): ValidationRes
       return { ok: false, error: "title must be a non-empty string" };
     }
     value.title = body.title.trim().slice(0, MAX_TITLE_LENGTH);
+  }
+  if (body.status !== undefined) {
+    const status = eventStatus(body.status);
+    if (status === null) return { ok: false, error: "status must be a supported event status" };
+    value.status = status;
   }
   if (body.startAt !== undefined) {
     if (!isIsoTimestamp(body.startAt)) return { ok: false, error: "startAt must be an ISO timestamp" };

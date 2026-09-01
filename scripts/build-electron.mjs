@@ -29,6 +29,32 @@ await Promise.all([
   }),
   build({
     ...shared,
+    entryPoints: ["electron/distribution-service.ts"],
+    format: "cjs",
+    outfile: "dist-electron/distribution-service.cjs",
+  }),
+  build({
+    ...shared,
+    entryPoints: ["electron/artifact-registry.ts"],
+    format: "cjs",
+    outfile: "dist-electron/artifact-registry.cjs",
+  }),
+  build({
+    ...shared,
+    entryPoints: ["electron/artifact-publisher.ts"],
+    format: "cjs",
+    outfile: "dist-electron/artifact-publisher.cjs",
+  }),
+  build({
+    ...shared,
+    entryPoints: ["electron/r2-release-provider.ts"],
+    format: "cjs",
+    outfile: "dist-electron/r2-release-provider.cjs",
+  }),
+  build({ ...shared, entryPoints: ["electron/release-fingerprint.ts"], format: "cjs", outfile: "dist-electron/release-fingerprint.cjs" }),
+  build({ ...shared, entryPoints: ["electron/release-certification.ts"], format: "cjs", outfile: "dist-electron/release-certification.cjs" }),
+  build({
+    ...shared,
     entryPoints: ["electron/platform-service.ts"],
     format: "cjs",
     outfile: "dist-electron/platform-service.cjs",

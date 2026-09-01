@@ -83,6 +83,7 @@ silently discarded when an event round-trips through the cloud:
 | `calendar_id` | `TEXT` | FK → `snapcal_calendars(id)` |
 | `owner_id` | `TEXT` | FK → `owners(id)`, denormalized for fast/scoped queries |
 | `title` | `TEXT` | required |
+| `status` | `TEXT` | `SCHEDULED`, `COMPLETED`, `MISSED`, `DISMISSED`, or `CANCELLED`; existing rows default to `SCHEDULED` |
 | `description`, `location` | `TEXT`, nullable | |
 | `start_at`, `end_at` | `TIMESTAMPTZ` | absolute UTC instants; `CHECK (end_at >= start_at)` |
 | `all_day` | `BOOLEAN` | |
@@ -189,6 +190,12 @@ entire read side of sync. It returns every row (active or tombstoned) with
 `revision > N`, ordered by revision, capped at 2000 rows per call so a huge
 backlog is paginated by repeatedly advancing the cursor rather than risking
 an unbounded response.
+
+**Explicit lifecycle status.** Status is ordinary revisioned event data: create
+defaults it to `SCHEDULED`, PATCH changes it through the same optimistic-
+concurrency path as title/time edits, and incremental pull distributes it to
+every client. No server clock job infers `MISSED`; only a user action can set
+`MISSED`, `COMPLETED`, `DISMISSED`, or `CANCELLED`.
 
 **Idempotent writes / duplicate-retry safety.** A client generates a
 `clientMutationId` once per logical "create this event" action and resends

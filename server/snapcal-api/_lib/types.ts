@@ -11,11 +11,15 @@ export type SnapCalCalendar = {
   updatedAt: string;
 };
 
+export const SNAPCAL_EVENT_STATUSES = ["SCHEDULED", "COMPLETED", "MISSED", "DISMISSED", "CANCELLED"] as const;
+export type SnapCalEventStatus = (typeof SNAPCAL_EVENT_STATUSES)[number];
+
 export type SnapCalEvent = {
   id: string;
   calendarId: string;
   ownerId: string;
   title: string;
+  status: SnapCalEventStatus;
   description: string | null;
   location: string | null;
   startAt: string;
@@ -38,6 +42,7 @@ export type SnapCalEvent = {
 /** Fields a client may set when creating an event. */
 export type NewSnapCalEventInput = {
   title: string;
+  status: SnapCalEventStatus;
   description: string | null;
   location: string | null;
   startAt: string;

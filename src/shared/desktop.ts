@@ -6,6 +6,18 @@ export type DesktopStatus = {
 
 export type DesktopApi = {
   getStatus(): Promise<DesktopStatus>;
+  listArtifacts(): Promise<ArtifactRecord[]>;
+  verifyArtifact(id: string): Promise<ArtifactRecord>;
+  recoverStagedArtifact(id: string): Promise<ArtifactRecord>;
+  stageArtifact(id: string): Promise<ArtifactRecord>;
+  openArtifactFolder(id: string): Promise<OperationResult>;
+  copyArtifactPath(id: string): Promise<OperationResult>;
+  publishArtifact(id: string): Promise<ArtifactRecord>;
+  reconcilePublishedArtifact(id: string): Promise<ArtifactRecord>;
+  getReleaseStorageSettings(): Promise<ReleaseStorageSettings>;
+  updateReleaseStorageSettings(settings: { endpoint: string; bucket: string; region: string; publicBaseUrl?: string; accessKeyId?: string; secretAccessKey?: string }): Promise<ReleaseStorageSettings>;
+  testReleaseStorage(): Promise<ReleaseStorageTestResult>;
+  probeReleaseStorage(): Promise<ReleaseStorageProbeResult>;
   listProjects(): Promise<CatalogProject[]>;
   addProject(input: NewCatalogProject): Promise<CatalogProject>;
   chooseProjectFolder(): Promise<string | null>;
@@ -62,6 +74,16 @@ export type DesktopApi = {
   getNeonStorageSettings(): Promise<NeonStorageSettings>;
   setNeonStorageSettings(settings: NeonStorageSettings): Promise<NeonStorageSettings>;
 };
+export type ArtifactRecord = {
+  id: string; projectId: string; projectName: string; target: string; platform?: string; architecture: string; filename: string;
+  sourcePath: string; stagedPath?: string; bytes: number; sha256: string; builtAt: string; validatedAt?: string;
+  validationStatus: "BUILT" | "VALIDATING" | "VALIDATED" | "STAGED" | "PUBLISHED" | "DEPLOYED" | "FAILED";
+  validationEvidence: string[]; backend?: string; version?: string;
+  publicationStatus: "NOT_PUBLISHED" | "PUBLISHING" | "PUBLISHED" | "DEPLOYED"; publicationDestination?: string; publicationReadiness?: { ready: boolean; reason: string }; reconciliationAvailable?: boolean;
+};
+export type ReleaseStorageSettings = { endpoint: string; bucket: string; region: string; publicBaseUrl: string; hasAccessKey: boolean; hasSecretKey: boolean; configured: boolean; providerCertified: boolean; configurationFingerprint?: string; certificationState?: "NOT_CERTIFIED" | "CERTIFIED" | "STALE" | "FAILED"; lastConnectionTestAt?: string; lastConnectionTestSucceeded?: boolean; lastProbeAt?: string; lastProbeSucceeded?: boolean; lastPublicDownloadResult?: "PASS" | "FAIL" | "NOT_CONFIGURED" };
+export type ReleaseStorageTestResult = { configured: boolean; reachable: boolean; authenticated: boolean; bucketAccessible: boolean; publicBaseConfigured: boolean; success: boolean; errorCode?: string; message: string };
+export type ReleaseStorageProbeResult = ReleaseStorageTestResult & { probeKey?: string; publicDownload: "PASS" | "FAIL" | "NOT_CONFIGURED"; cleanup: "PASS" | "FAIL" | "NOT_RUN" };
 
 export type NeonStorageTable = { schema: string; tableName: string; totalBytes: number; tableBytes: number; indexBytes: number; approximateRowCount: number; protected: boolean };
 export type NeonStorageAnalysis = { databaseName: string; totalBytes: number; totalMb: number; freeTierLimitBytes: number; freeTierLimitMb: number; cleanupThresholdBytes: number; cleanupThresholdMb: number; usedPercent: number; remainingBytes: number; remainingMb: number; thresholdReached: boolean; schemaMigrations: number; tables: NeonStorageTable[] };
@@ -88,7 +110,9 @@ export type CatalogProject = {
 };
 
 export type NewCatalogProject = Omit<CatalogProject, "id" | "folderStatus" | "createdAt">;
-export type DiscoveredProject = { name: string; slug: string; folder: string; markers: string[]; packageName?: string };
+export type ProjectType = "web" | "electron" | "android" | "capacitor" | "tauri" | "rust" | "python" | "dotnet" | "static";
+export type PackagingBackend = "electron-builder" | "electron-forge" | "electron-packager" | "tauri" | "gradle" | "dotnet" | "pyinstaller" | "web-script" | "archive" | "none";
+export type DiscoveredProject = { name: string; slug: string; folder: string; markers: string[]; packageName?: string; projectTypes?: ProjectType[]; packageManager?: string; backends?: PackagingBackend[] };
 export type WebsiteProduct = { name: string; slug: string; folder: string; description: string; category: string; source: "scan" | "catalog"; addedAt: string };
 export type WebsiteChangeRequest = { additions: Omit<WebsiteProduct, "addedAt">[]; removalSlugs: string[] };
 export type WebsiteChangePreview = { additions: WebsiteProduct[]; removals: WebsiteProduct[]; warnings: string[]; canApply: boolean };
@@ -214,6 +238,8 @@ export type DistributionCapabilities = {
   apk: boolean;
   zip: boolean;
   source: boolean;
+  projectTypes?: ProjectType[];
+  backends?: Partial<Record<DistributionTarget, PackagingBackend>>;
 };
 
 export type DistributionPlan = {
@@ -251,6 +277,8 @@ export type DistributionRunResult = OperationResult & {
 };
 export type DistributionReadiness =
   | "ready"
+  | "preparable"
+  | "needs-input"
   | "needs-setup"
   | "built"
   | "staged"
@@ -270,6 +298,8 @@ export type DistributionProjectStatus = {
   projectId: string;
   projectName: string;
   targets: DistributionTargetStatus[];
+  projectTypes?: ProjectType[];
+  backends?: Partial<Record<DistributionTarget, PackagingBackend>>;
 };
 
 export type DistributionAction =

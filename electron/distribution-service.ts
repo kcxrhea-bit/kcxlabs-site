@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import {
   access,
   copyFile,
@@ -19,13 +21,55 @@ import type {
   DistributionRunResult,
   DistributionTarget,
 } from "../src/shared/desktop";
+import { inspectProject } from "./project-discovery";
 
 type PackageJson = {
+  [key: string]: unknown;
   version?: string;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 };
+
+export function mergeElectronBuilderPackage(
+  existing: Record<string, unknown>,
+  projectName: string,
+  projectSlug: string,
+  electronVersion: string,
+): { packageJson: Record<string, unknown>; conflicts: string[] } {
+  const packageJson: Record<string, unknown> = structuredClone(existing);
+  const conflicts: string[] = [];
+  const scripts = { ...(isRecord(packageJson.scripts) ? packageJson.scripts : {}) } as Record<string, string>;
+  const requiredScripts: Record<string, string> = {
+    "package:win": "npm run build:electron && electron-builder --win portable",
+    installer: "npm run build:electron && electron-builder --win nsis",
+  };
+  for (const [name, command] of Object.entries(requiredScripts)) {
+    if (typeof scripts[name] === "string" && scripts[name] !== command) conflicts.push(`scripts.${name}`);
+    else if (!(name in scripts)) scripts[name] = command;
+  }
+  packageJson.scripts = scripts;
+  const devDependencies = { ...(isRecord(packageJson.devDependencies) ? packageJson.devDependencies : {}) } as Record<string, string>;
+  if (!devDependencies["electron-builder"] && !(isRecord(packageJson.dependencies) && "electron-builder" in packageJson.dependencies)) devDependencies["electron-builder"] = "^26.15.3";
+  packageJson.devDependencies = devDependencies;
+  if (typeof packageJson.productName !== "string") packageJson.productName = projectName;
+  const build = isRecord(packageJson.build) ? { ...packageJson.build } : {};
+  const required: Record<string, unknown> = { appId: `org.kcxlabs.${projectSlug.replace(/[^a-z0-9]/g, "")}`, productName: projectName, electronVersion, directories: { output: "release" }, files: ["dist/**/*", "dist-electron/**/*", "package.json"], win: { target: ["portable", "nsis"] }, nsis: { oneClick: false, allowToChangeInstallationDirectory: true } };
+  for (const [key, value] of Object.entries(required)) {
+    if (key in build && JSON.stringify(build[key]) !== JSON.stringify(value)) conflicts.push(`build.${key}`);
+    else if (!(key in build)) build[key] = value;
+  }
+  packageJson.build = build;
+  return { packageJson, conflicts };
+}
+
+export function createPackagingWorkspace(userData?: string): string {
+  return join(userData || tmpdir(), "kcx-packaging", randomUUID());
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
 
 type ProgressCallback = (progress: DistributionProgress) => void;
 
@@ -150,6 +194,7 @@ export class DistributionService {
     }
 
     const root = resolve(project.folder);
+    const inspection = await inspectProject(root);
     const pkg = await readPackageJson(root);
 
     const desktopRoot = join(root, "apps", "desktop");
@@ -171,10 +216,15 @@ export class DistributionService {
       (await exists(join(root, "capacitor.config.ts"))) ||
       (await exists(join(root, "capacitor.config.js"))) ||
       (await exists(join(root, "capacitor.config.json")));
+    const androidWorkspace = join(root, "apps", "android");
+    const workspaceCapacitor =
+      (await exists(join(androidWorkspace, "capacitor.config.ts"))) ||
+      (await exists(join(androidWorkspace, "capacitor.config.js"))) ||
+      (await exists(join(androidWorkspace, "capacitor.config.json")));
 
     const capacitorAndroid =
-      capacitorRoot &&
-      (await exists(join(root, "android", "gradlew.bat")));
+      (capacitorRoot && (await exists(join(root, "android", "gradlew.bat")))) ||
+      (workspaceCapacitor && (await exists(join(androidWorkspace, "android", "gradlew.bat"))));
 
     const nativeAndroid =
       (await exists(join(root, "gradlew.bat"))) &&
@@ -221,16 +271,26 @@ export class DistributionService {
         "package:win",
       ]);
 
+    const electronBackend = inspection.backends?.find((backend) => ["electron-builder", "electron-forge", "electron-packager"].includes(backend));
     return {
       projectId: project.id,
       projectName: project.name,
       projectFolder: root,
       web: Boolean(webScript),
-      executable: electron && Boolean(executableScript),
-      installer: electron && Boolean(installerScript),
+      executable: electron && (Boolean(executableScript) || Boolean(electronBackend)),
+      installer: electron && (Boolean(installerScript) || Boolean(electronBackend)),
       apk: capacitorAndroid || nativeAndroid,
       zip: true,
       source: await exists(join(root, ".git")),
+      projectTypes: inspection.projectTypes,
+      backends: {
+        web: webScript ? "web-script" : undefined,
+        executable: electronBackend as any,
+        installer: electronBackend as any,
+        apk: capacitorAndroid || nativeAndroid ? "gradle" : undefined,
+        zip: "archive",
+        source: "archive",
+      },
     };
   }
 
@@ -245,6 +305,7 @@ export class DistributionService {
     }
 
     const root = resolve(project.folder);
+    const inspection = await inspectProject(root);
     const pkg = await readPackageJson(root);
     const desktopRoot = join(root, "apps", "desktop");
     const desktopPkg = await readPackageJson(desktopRoot);
@@ -405,6 +466,16 @@ export class DistributionService {
             args: ["assembleDebug"],
             expectedArtifacts: ["app/build/outputs/apk/**/*.apk"],
             message: "Run Android Gradle assembleDebug.",
+          };
+        }
+
+        if (await exists(join(root, "apps", "android", "android", "gradlew.bat"))) {
+          return {
+            projectId: project.id, projectName: project.name, target, supported: true,
+            workingDirectory: join(root, "apps", "android", "android"),
+            command: "gradlew.bat", args: ["assembleDebug"],
+            expectedArtifacts: ["app/build/outputs/apk/**/*.apk"],
+            message: "Run Android Gradle assembleDebug for apps/android.",
           };
         }
 
@@ -582,6 +653,30 @@ export class DistributionService {
 
       const startedAt = Date.now();
 
+      const electronWindowsTarget =
+        (target === "executable" || target === "installer") &&
+        plan.command === "npm.cmd" &&
+        plan.args[0] === "run" &&
+        (plan.args[1] === "package:win" || plan.args[1] === "installer");
+
+      if (electronWindowsTarget) {
+        const workDirectory = createPackagingWorkspace(this.userData);
+        await mkdir(workDirectory, { recursive: true });
+        emit("building", 25, "Building the Electron renderer in Electron mode.");
+        const renderer = await this.runCommand("npm.cmd", ["exec", "vite", "--", "build", "--mode", "electron"], plan.workingDirectory);
+        if (!renderer.ok) throw new Error(`Electron renderer build failed. ${renderer.message}`);
+        const electronBuild = await this.runCommand("npm.cmd", ["run", "build:electron"], plan.workingDirectory);
+        if (!electronBuild.ok) throw new Error(`Electron main/preload build failed. ${electronBuild.message}`);
+        emit("building", 55, "Packaging Electron into an external work directory.");
+        const packageResult = await this.runCommand("npx.cmd", ["electron-builder", "--win", target === "installer" ? "nsis" : "portable", "--publish", "never", `--config.directories.output=${workDirectory}`], plan.workingDirectory);
+        if (!packageResult.ok) throw new Error(`electron-builder failed. ${packageResult.message}`);
+        const unpacked = join(workDirectory, "win-unpacked");
+        const appAsar = join(unpacked, "resources", "app.asar");
+        if (!(await exists(appAsar)) || (await exists(join(unpacked, "resources", "default_app.asar")))) throw new Error("Electron package failed structural validation: project app.asar is missing or default_app.asar was produced.");
+        emit("complete", 100, `Electron package structurally validated in ${workDirectory}.`);
+        return { ok: true, message: `Electron package created in external workspace ${workDirectory}.`, output: packageResult.output, target, artifactPaths: [target === "installer" ? join(workDirectory, `${project.name} Setup.exe`) : join(workDirectory, `${project.name}.exe`)] };
+      }
+
       emit(
         "building",
         25,
@@ -727,6 +822,7 @@ export class DistributionService {
     }
 
     const root = resolve(project.folder);
+    const inspection = await inspectProject(root);
 
     if (!["executable", "installer", "apk"].includes(target)) {
       return {
@@ -769,6 +865,16 @@ export class DistributionService {
           ],
           message:
             "KCx Labs cannot safely prepare Windows Electron packaging for this project yet.",
+        };
+      }
+
+      const existingBackend = inspection.backends?.find((backend) => ["electron-builder", "electron-forge", "electron-packager"].includes(backend));
+      if (existingBackend) {
+        return {
+          projectId: project.id, projectName: project.name, target, supported: false,
+          detectedRoot: root, detectedKind: `electron-${existingBackend}`,
+          changes: [], warnings: [],
+          message: `Existing ${existingBackend} packaging backend detected. KCx Labs will use the project's configuration; no setup is required.`,
         };
       }
 
@@ -1015,50 +1121,12 @@ export class DistributionService {
         );
       }
 
-      const scripts = {
-        ...(parsed.scripts ?? {}),
-      };
-
-      /*
-       * Both targets are configured together. One setup pass should make
-       * Windows portable EXE and installer production available.
-       */
-      scripts["package:win"] =
-        "npm run build && electron-builder --win portable";
-
-      scripts["installer"] =
-        "npm run build && electron-builder --win nsis";
-
-      parsed.scripts = scripts;
-
-      parsed.productName =
-        typeof parsed.productName === "string"
-          ? parsed.productName
-          : project.name;
-
-      parsed.build = {
-        ...(parsed.build ?? {}),
-        appId: `org.kcxlabs.${project.slug.replace(/[^a-z0-9]/g, "")}`,
-        productName: project.name,
-        electronVersion,
-        directories: {
-          output: "release",
-        },
-        files: [
-          "dist/**/*",
-          "package.json",
-        ],
-        win: {
-          target: [
-            "portable",
-            "nsis",
-          ],
-        },
-        nsis: {
-          oneClick: false,
-          allowToChangeInstallationDirectory: true,
-        },
-      };
+      const merged = mergeElectronBuilderPackage(parsed, project.name, project.slug, electronVersion);
+      if (merged.conflicts.length > 0) {
+        throw new Error(`Existing packaging configuration conflicts with the proposed setup: ${merged.conflicts.join(", ")}`);
+      }
+      Object.keys(parsed).forEach((key) => delete parsed[key]);
+      Object.assign(parsed, merged.packageJson);
 
       await writeFile(
         packagePath,
@@ -1180,6 +1248,7 @@ export class DistributionService {
     }
 
     const capabilities = await this.capabilities(project);
+    const inspection = await inspectProject(project.folder);
     const targets: DistributionTarget[] = [
       "web",
       "executable",
@@ -1198,6 +1267,8 @@ export class DistributionService {
     return {
       projectId: project.id,
       projectName: project.name,
+      projectTypes: inspection.projectTypes,
+      backends: capabilities.backends,
       targets: await Promise.all(
         targets.map(async (target) => {
           const plan = await this.preview(project, target);
@@ -1209,6 +1280,16 @@ export class DistributionService {
               reason: plan.message,
               canConfigure: false,
               canBuild: true,
+            };
+          }
+
+          if (configurable.has(target) && (target === "executable" || target === "installer") && inspection.projectTypes?.includes("electron") && !(inspection.backends?.some((backend) => ["electron-builder", "electron-forge", "electron-packager"].includes(backend)))) {
+            return {
+              target,
+              readiness: "preparable" as const,
+              reason: `Electron detected. No Windows packaging backend is configured. Recommended backend: electron-builder.`,
+              canConfigure: true,
+              canBuild: false,
             };
           }
 

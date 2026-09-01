@@ -27,11 +27,14 @@ export type SnapCalCalendar = {
   updatedAt: string;
 };
 
+export type SnapCalEventStatus = "SCHEDULED" | "COMPLETED" | "MISSED" | "DISMISSED" | "CANCELLED";
+
 export type SnapCalEvent = {
   id: string;
   calendarId: string;
   ownerId: string;
   title: string;
+  status: SnapCalEventStatus;
   description: string | null;
   location: string | null;
   startAt: string;
@@ -54,6 +57,7 @@ export type SnapCalEvent = {
 /** Fields the create/edit form collects. `clientMutationId` is generated once per create action. */
 export type EventDraft = {
   title: string;
+  status: SnapCalEventStatus;
   description: string | null;
   location: string | null;
   startAt: string;

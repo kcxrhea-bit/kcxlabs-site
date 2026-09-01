@@ -116,6 +116,7 @@ test("vercel.json rewrites /api/:path* to /api/router before the SPA catch-all, 
   assert.ok(apiIndex < spaIndex, "the /api rewrite must come before the SPA catch-all");
   assert.notEqual(nexusAssetsIndex, -1, "the /nexus/assets rewrite must be preserved");
   assert.deepEqual(vercel.redirects, [
+    { source: "/snapcal", destination: "/snapcal/", permanent: false },
     { source: "/nexus-cloud", destination: "/nexus", permanent: true },
     { source: "/nexus-cloud/portal", destination: "/nexus/portal", permanent: true },
   ]);

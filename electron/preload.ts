@@ -5,6 +5,18 @@ import type { DesktopApi, MediaUploadRecord } from "../src/shared/desktop";
 
 const desktopApi: DesktopApi = {
   getStatus: () => ipcRenderer.invoke(desktopIpcChannels.getStatus),
+  listArtifacts: () => ipcRenderer.invoke(desktopIpcChannels.listArtifacts),
+  verifyArtifact: (id) => ipcRenderer.invoke(desktopIpcChannels.verifyArtifact, id),
+  recoverStagedArtifact: (id) => ipcRenderer.invoke(desktopIpcChannels.recoverStagedArtifact, id),
+  stageArtifact: (id) => ipcRenderer.invoke(desktopIpcChannels.stageArtifact, id),
+  openArtifactFolder: (id) => ipcRenderer.invoke(desktopIpcChannels.openArtifactFolder, id),
+  copyArtifactPath: (id) => ipcRenderer.invoke(desktopIpcChannels.copyArtifactPath, id),
+  publishArtifact: (id) => ipcRenderer.invoke(desktopIpcChannels.publishArtifact, id),
+  reconcilePublishedArtifact: (id) => ipcRenderer.invoke(desktopIpcChannels.reconcilePublishedArtifact, id),
+  getReleaseStorageSettings: () => ipcRenderer.invoke(desktopIpcChannels.getReleaseStorageSettings),
+  updateReleaseStorageSettings: (settings) => ipcRenderer.invoke(desktopIpcChannels.updateReleaseStorageSettings, settings),
+  testReleaseStorage: () => ipcRenderer.invoke(desktopIpcChannels.testReleaseStorage),
+  probeReleaseStorage: () => ipcRenderer.invoke(desktopIpcChannels.probeReleaseStorage),
   listProjects: () => ipcRenderer.invoke(desktopIpcChannels.listProjects),
   addProject: (input) => ipcRenderer.invoke(desktopIpcChannels.addProject, input),
   chooseProjectFolder: () => ipcRenderer.invoke(desktopIpcChannels.chooseProjectFolder),
