@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-electron
+release
+.kcx-user-data
+apps/android/android/.gradle
+apps/android/android/app/build
+apps/android/node_modules
+**/*.exe
+**/*.blockmap
+**/*.map

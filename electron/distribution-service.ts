@@ -20,8 +20,11 @@ import type {
   DistributionProgress,
   DistributionRunResult,
   DistributionTarget,
+  DistributionDiagnostic,
+  DistributionArtifactMetadata,
+  ArtifactKind,
 } from "../src/shared/desktop";
-import { inspectProject } from "./project-discovery";
+import { analyzeScriptDependencies, inspectProject } from "./project-discovery";
 
 type PackageJson = {
   [key: string]: unknown;
@@ -54,7 +57,7 @@ export function mergeElectronBuilderPackage(
   packageJson.devDependencies = devDependencies;
   if (typeof packageJson.productName !== "string") packageJson.productName = projectName;
   const build = isRecord(packageJson.build) ? { ...packageJson.build } : {};
-  const required: Record<string, unknown> = { appId: `org.kcxlabs.${projectSlug.replace(/[^a-z0-9]/g, "")}`, productName: projectName, electronVersion, directories: { output: "release" }, files: ["dist/**/*", "dist-electron/**/*", "package.json"], win: { target: ["portable", "nsis"] }, nsis: { oneClick: false, allowToChangeInstallationDirectory: true } };
+  const required: Record<string, unknown> = { productName: projectName, electronVersion, directories: { output: "release" }, files: ["dist/**/*", "dist-electron/**/*", "package.json"], win: { target: ["portable", "nsis"] }, nsis: { oneClick: false, allowToChangeInstallationDirectory: true } };
   for (const [key, value] of Object.entries(required)) {
     if (key in build && JSON.stringify(build[key]) !== JSON.stringify(value)) conflicts.push(`build.${key}`);
     else if (!(key in build)) build[key] = value;
@@ -153,6 +156,83 @@ function firstScript(
     if (hasScript(pkg, name)) return name;
   }
   return null;
+}
+
+function packageRunner(manager: string | undefined): string {
+  return manager === "pnpm" ? "pnpm.cmd" : manager === "yarn" ? "yarn.cmd" : manager === "bun" ? "bun.exe" : "npm.cmd";
+}
+
+function packageArgs(manager: string | undefined, script: string): string[] {
+  return ["run", script];
+}
+
+function redactOutput(value: string): string {
+  return value.replace(/(DATABASE_URL|API_KEY|TOKEN|SECRET|PASSWORD|ACCESS_KEY)\s*[=:]\s*[^\s]+/gi, "$1=[REDACTED]").replace(/https?:\/\/[^\s]*([?&](?:token|key|secret|password)=[^\s&]*)/gi, "[REDACTED_URL]");
+}
+
+export function artifactKind(target: DistributionTarget): ArtifactKind {
+  if (target === "zip") return "project-archive";
+  if (target === "source") return "source-archive";
+  if (target === "installer") return "installer";
+  return "application-binary";
+}
+
+export function artifactMetadata(project: CatalogProject, target: DistributionTarget, path: string, stagedPath?: string, backend?: string): DistributionArtifactMetadata {
+  return { path, stagedPath, filename: basename(path), projectId: project.id, projectName: project.name, target, kind: artifactKind(target), runnable: !["zip", "source"].includes(target), platform: target === "apk" ? "android" : ["executable", "installer"].includes(target) ? "windows" : undefined, architecture: "unknown", backend, provenance: target === "zip" ? "project-archive" : target === "source" ? "git-archive" : backend ? "detected-backend" : "distribution-center" };
+}
+
+function scriptBlockReason(scripts: Record<string, string> | undefined, entry: string): string | null {
+  if (!scripts) return null;
+  const analysis = analyzeScriptDependencies(scripts, entry);
+  if (analysis.missing.length) return `Missing local package script: ${analysis.missing.join(", ")}`;
+  if (analysis.cycles.length) return `Circular package-script dependency: ${analysis.cycles[0].join(" -> ")}`;
+  return null;
+}
+
+function safeElectronRepair(
+  pkg: PackageJson | null,
+  manager: string | undefined,
+  target: DistributionTarget,
+): { script: string; command: string; evidence: string[] } | null {
+  if (!pkg?.scripts || !pkg.scripts[target === "installer" ? "installer" : "package:win"]) return null;
+  const entry = pkg.scripts[target === "installer" ? "installer" : "package:win"];
+  const missing = analyzeScriptDependencies(pkg.scripts, target === "installer" ? "installer" : "package:win").missing;
+  if (!missing.includes("build:electron")) return null;
+  const hasRenderer = typeof pkg.scripts["build:renderer"] === "string";
+  const hasMain = typeof pkg.scripts["build:main"] === "string";
+  if (!hasRenderer || !hasMain) return null;
+  const runner = packageRunner(manager);
+  return {
+    script: "build:electron",
+    command: `${runner} run build:renderer && ${runner} run build:main`,
+    evidence: [
+      `${target === "installer" ? "installer" : "package:win"} references build:electron`,
+      "build:renderer exists",
+      "build:main exists",
+      `package manager detected as ${manager || "unknown"}`,
+    ],
+  };
+}
+
+export function scriptDiagnostic(
+  target: DistributionTarget,
+  scripts: Record<string, string>,
+  entry: string,
+  problem: string,
+  architecture: string[],
+): DistributionDiagnostic {
+  const analysis = analyzeScriptDependencies(scripts, entry);
+  const candidates = [] as DistributionDiagnostic["candidates"];
+  if (analysis.missing.includes("build:electron") && scripts["build:renderer"] && scripts["build:main"]) {
+    candidates.push({ id: "compose-existing-electron-builds", description: "Add the missing local script by composing the existing renderer and main/preload build scripts.", confidence: "high", evidence: ["build:renderer exists", "build:main exists"], assumptions: [], requiredChanges: ["Add build:electron without changing existing scripts"], filesAffected: ["package.json"], packagesRequired: [], commands: ["run build:renderer", "run build:main"], safeToApply: true, rejectionReasons: [] });
+  }
+  for (const name of ["build", "compile", "build:desktop"]) if (scripts[name] && !candidates.some((candidate) => candidate.id === name)) candidates.push({ id: `existing-${name}`, description: `Use existing ${name} as the missing Electron build dependency.`, confidence: "medium", evidence: [`scripts.${name} exists`], assumptions: ["The script produces the packaging backend's required Electron outputs"], requiredChanges: [`Wire ${name} into the broken command chain`], filesAffected: ["package.json"], packagesRequired: [], commands: ["run " + name], safeToApply: false, rejectionReasons: ["Output relationship is not proven from project metadata"] });
+  const chain = [entry];
+  const walk = (name: string, seen: Set<string>) => { for (const dep of analysis.references[name] || []) { chain.push(dep); if (!seen.has(dep)) { seen.add(dep); walk(dep, seen); } } };
+  walk(entry, new Set([entry]));
+  if (analysis.missing.length) chain.push("MISSING: " + analysis.missing.join(", "));
+  if (analysis.cycles.length) chain.push("CYCLE: " + analysis.cycles[0].join(" -> "));
+  return { target, problemType: analysis.cycles.length ? "SCRIPT_DEPENDENCY_CYCLE" : "MISSING_SCRIPT_DEPENDENCY", summary: problem, dependencyChain: chain, evidence: [`package.json scripts.${entry}`, ...analysis.missing.map((name) => `Referenced script ${name} is absent`)], detectedArchitecture: architecture, candidates, ambiguityReasons: candidates.length > 1 ? ["Multiple plausible build paths were found; output ownership is not proven."] : [], missingEvidence: candidates.length ? ["Proof that the candidate produces the packaging backend's expected output"] : ["A project-native command that proves the missing dependency's output"], recommendedNextStep: candidates.some((candidate) => candidate.safeToApply) ? "Preview the high-confidence repair before applying it." : "Clarify or configure the project's build pipeline manually." };
 }
 
 async function walkFiles(root: string): Promise<string[]> {
@@ -272,21 +352,23 @@ export class DistributionService {
       ]);
 
     const electronBackend = inspection.backends?.find((backend) => ["electron-builder", "electron-forge", "electron-packager"].includes(backend));
+    const nativeExecutableBackend = inspection.backends?.find((backend) => ["tauri", "dotnet", "pyinstaller"].includes(backend));
+    const installerBackend = electronBackend || (inspection.backends?.includes("tauri") ? "tauri" : undefined);
     return {
       projectId: project.id,
       projectName: project.name,
       projectFolder: root,
       web: Boolean(webScript),
-      executable: electron && (Boolean(executableScript) || Boolean(electronBackend)),
-      installer: electron && (Boolean(installerScript) || Boolean(electronBackend)),
+      executable: (electron && (Boolean(executableScript) || Boolean(electronBackend))) || Boolean(nativeExecutableBackend),
+      installer: (electron && (Boolean(installerScript) || Boolean(electronBackend))) || Boolean(installerBackend),
       apk: capacitorAndroid || nativeAndroid,
       zip: true,
       source: await exists(join(root, ".git")),
       projectTypes: inspection.projectTypes,
       backends: {
         web: webScript ? "web-script" : undefined,
-        executable: electronBackend as any,
-        installer: electronBackend as any,
+        executable: (electronBackend || nativeExecutableBackend) as any,
+        installer: installerBackend as any,
         apk: capacitorAndroid || nativeAndroid ? "gradle" : undefined,
         zip: "archive",
         source: "archive",
@@ -306,6 +388,7 @@ export class DistributionService {
 
     const root = resolve(project.folder);
     const inspection = await inspectProject(root);
+    const electron = inspection.projectTypes?.includes("electron") ?? false;
     const pkg = await readPackageJson(root);
     const desktopRoot = join(root, "apps", "desktop");
     const desktopPkg = await readPackageJson(desktopRoot);
@@ -320,7 +403,32 @@ export class DistributionService {
       command: null,
       args: [],
       expectedArtifacts: [],
-      message: `${target} is not currently supported for this project.`,
+      message: target === "web"
+        ? "Web packaging is unsupported because no supported Web build command was detected in the inspected project evidence."
+        : `${target} is not currently supported for this project because no supported packaging backend was detected.`,
+      readiness: "unsupported",
+      diagnostic: {
+        target,
+        problemType: "UNSUPPORTED_PROJECT_STRUCTURE",
+        summary: target === "web"
+          ? "No supported Web build command was detected."
+          : `No supported ${target} packaging path was detected.`,
+        dependencyChain: [],
+        evidence: [
+          `Detected project types: ${(inspection.projectTypes || []).join(", ") || "none"}`,
+          `Detected packaging backends: ${(inspection.backends || []).join(", ") || "none"}`,
+          `Package manager: ${inspection.packageManager || "unknown"}`,
+          target === "web" ? "No build:web, build, or compile script was found." : `No backend for target ${target} was found.`,
+        ],
+        detectedArchitecture: inspection.projectTypes || [],
+        candidates: [],
+        ambiguityReasons: [],
+        missingEvidence: target === "web" ? ["A deterministic Web build script and its output directory"] : [`A supported ${target} backend and deterministic output contract`],
+        recommendedNextStep: target === "web" ? "Add or document a deterministic Web build command and output directory, then refresh inspection." : "Review the detected architecture and configure its native packaging tool manually, then refresh inspection.",
+      },
+    });
+    const blocked = (message: string, command: string, args: string[], workingDirectory: string, diagnostic?: DistributionDiagnostic): DistributionPlan => ({
+      projectId: project.id, projectName: project.name, target, supported: false, workingDirectory, command, args, expectedArtifacts: [], message, readiness: "blocked", blockedBy: message, diagnostic,
     });
 
     if (!caps[target]) return unsupported();
@@ -359,8 +467,10 @@ export class DistributionService {
         };
 
       case "web": {
-        const script = firstScript(pkg, ["build:web", "build"]);
+        const script = firstScript(pkg, ["build:web", "build", "compile"]);
         if (!script) return unsupported();
+        const scriptProblem = scriptBlockReason(pkg?.scripts, script);
+        if (scriptProblem) return blocked(scriptProblem, packageRunner(inspection.packageManager), packageArgs(inspection.packageManager, script), root, scriptDiagnostic(target, pkg?.scripts || {}, script, scriptProblem, inspection.projectTypes || []));
 
         return {
           projectId: project.id,
@@ -368,14 +478,22 @@ export class DistributionService {
           target,
           supported: true,
           workingDirectory: root,
-          command: "npm.cmd",
-          args: ["run", script],
+          command: packageRunner(inspection.packageManager),
+          args: packageArgs(inspection.packageManager, script),
           expectedArtifacts: ["dist/**", "build/**", ".next/**"],
-          message: `Run npm run ${script}.`,
+          message: `Run ${packageRunner(inspection.packageManager)} ${packageArgs(inspection.packageManager, script).join(" ")}.`,
+          commandSource: "project-script",
         };
       }
 
       case "executable": {
+        if (!electron) {
+          const backend = inspection.backends?.find((value) => ["tauri", "dotnet", "pyinstaller"].includes(value));
+          if (backend === "tauri") return { projectId: project.id, projectName: project.name, target, supported: true, workingDirectory: root, command: "cargo.exe", args: ["tauri", "build"], expectedArtifacts: ["src-tauri/target/release/bundle/**/*", "target/release/**/*"], message: "Run the existing Tauri packaging backend.", commandSource: "detected-backend" };
+          if (backend === "dotnet") return { projectId: project.id, projectName: project.name, target, supported: true, workingDirectory: root, command: "dotnet.exe", args: ["publish"], expectedArtifacts: ["bin/**/publish/**/*"], message: "Run the detected .NET publish backend.", commandSource: "detected-backend" };
+          if (backend === "pyinstaller") return { projectId: project.id, projectName: project.name, target, supported: true, workingDirectory: root, command: "pyinstaller.exe", args: ["pyinstaller.spec"], expectedArtifacts: ["dist/**/*.exe"], message: "Run the existing PyInstaller specification.", commandSource: "detected-backend" };
+          return unsupported();
+        }
         const rootScript = firstScript(pkg, [
           "package",
           "make",
@@ -396,7 +514,15 @@ export class DistributionService {
 
         const script = rootScript ?? workspaceScript;
 
-        if (!script) return unsupported();
+        if (!script) {
+          const backend = inspection.backends?.find((value) => ["electron-builder", "electron-forge", "electron-packager"].includes(value));
+          if (!backend) return unsupported();
+          const backendCommand = backend === "electron-forge" ? "make" : backend === "electron-packager" ? "package" : "build";
+          return { projectId: project.id, projectName: project.name, target, supported: true, workingDirectory: rootScript ? root : desktopRoot, command: packageRunner(inspection.packageManager), args: packageArgs(inspection.packageManager, backendCommand), expectedArtifacts: ["release/**/*", "dist/**/*", "out/**/*"], message: `Run the detected ${backend} packaging backend.`, commandSource: "detected-backend" };
+        }
+        const scriptPackage = rootScript ? pkg : desktopPkg;
+        const scriptProblem = scriptBlockReason(scriptPackage?.scripts, script);
+        if (scriptProblem) return blocked(scriptProblem, packageRunner(inspection.packageManager), packageArgs(inspection.packageManager, script), rootScript ? root : desktopRoot, scriptDiagnostic(target, scriptPackage?.scripts || {}, script, scriptProblem, inspection.projectTypes || []));
 
         return {
           projectId: project.id,
@@ -404,18 +530,21 @@ export class DistributionService {
           target,
           supported: true,
           workingDirectory: rootScript ? root : desktopRoot,
-          command: "npm.cmd",
-          args: ["run", script],
+          command: packageRunner(inspection.packageManager),
+          args: packageArgs(inspection.packageManager, script),
           expectedArtifacts: [
             "release/**/*.exe",
             "dist/**/*.exe",
             "out/**/*.exe",
           ],
-          message: `Run npm run ${script}.`,
+          message: `Run ${packageRunner(inspection.packageManager)} ${packageArgs(inspection.packageManager, script).join(" ")}.`,
+          commandSource: "project-script",
         };
       }
 
       case "installer": {
+        if (!electron && inspection.backends?.includes("tauri")) return { projectId: project.id, projectName: project.name, target, supported: true, workingDirectory: root, command: "cargo.exe", args: ["tauri", "build"], expectedArtifacts: ["src-tauri/target/release/bundle/**/*"], message: "Run the existing Tauri installer backend.", commandSource: "detected-backend" };
+        if (!electron) return unsupported();
         const rootScript = firstScript(pkg, [
           "installer",
           "dist",
@@ -434,7 +563,14 @@ export class DistributionService {
 
         const script = rootScript ?? workspaceScript;
 
-        if (!script) return unsupported();
+        if (!script) {
+          const backend = inspection.backends?.find((value) => ["electron-builder", "electron-forge"].includes(value));
+          if (!backend) return unsupported();
+          return { projectId: project.id, projectName: project.name, target, supported: true, workingDirectory: rootScript ? root : desktopRoot, command: packageRunner(inspection.packageManager), args: packageArgs(inspection.packageManager, backend === "electron-forge" ? "make" : "dist"), expectedArtifacts: ["release/**/*Setup*.exe", "release/**/*.msi", "dist/**/*Setup*.exe", "dist/**/*.msi"], message: `Run the detected ${backend} installer backend.`, commandSource: "detected-backend" };
+        }
+        const scriptPackage = rootScript ? pkg : desktopPkg;
+        const scriptProblem = scriptBlockReason(scriptPackage?.scripts, script);
+        if (scriptProblem) return blocked(scriptProblem, packageRunner(inspection.packageManager), packageArgs(inspection.packageManager, script), rootScript ? root : desktopRoot, scriptDiagnostic(target, scriptPackage?.scripts || {}, script, scriptProblem, inspection.projectTypes || []));
 
         return {
           projectId: project.id,
@@ -442,15 +578,16 @@ export class DistributionService {
           target,
           supported: true,
           workingDirectory: rootScript ? root : desktopRoot,
-          command: "npm.cmd",
-          args: ["run", script],
+          command: packageRunner(inspection.packageManager),
+          args: packageArgs(inspection.packageManager, script),
           expectedArtifacts: [
             "release/**/*Setup*.exe",
             "release/**/*.msi",
             "dist/**/*Setup*.exe",
             "dist/**/*.msi",
           ],
-          message: `Run npm run ${script}.`,
+          message: `Run ${packageRunner(inspection.packageManager)} ${packageArgs(inspection.packageManager, script).join(" ")}.`,
+          commandSource: "project-script",
         };
       }
 
@@ -600,6 +737,7 @@ export class DistributionService {
           output: result.output,
           target,
           artifactPaths: [output],
+          artifacts: [artifactMetadata(project, target, output)],
         };
       }
 
@@ -648,34 +786,11 @@ export class DistributionService {
           output: result.output,
           target,
           artifactPaths: [output],
+          artifacts: [artifactMetadata(project, target, output)],
         };
       }
 
       const startedAt = Date.now();
-
-      const electronWindowsTarget =
-        (target === "executable" || target === "installer") &&
-        plan.command === "npm.cmd" &&
-        plan.args[0] === "run" &&
-        (plan.args[1] === "package:win" || plan.args[1] === "installer");
-
-      if (electronWindowsTarget) {
-        const workDirectory = createPackagingWorkspace(this.userData);
-        await mkdir(workDirectory, { recursive: true });
-        emit("building", 25, "Building the Electron renderer in Electron mode.");
-        const renderer = await this.runCommand("npm.cmd", ["exec", "vite", "--", "build", "--mode", "electron"], plan.workingDirectory);
-        if (!renderer.ok) throw new Error(`Electron renderer build failed. ${renderer.message}`);
-        const electronBuild = await this.runCommand("npm.cmd", ["run", "build:electron"], plan.workingDirectory);
-        if (!electronBuild.ok) throw new Error(`Electron main/preload build failed. ${electronBuild.message}`);
-        emit("building", 55, "Packaging Electron into an external work directory.");
-        const packageResult = await this.runCommand("npx.cmd", ["electron-builder", "--win", target === "installer" ? "nsis" : "portable", "--publish", "never", `--config.directories.output=${workDirectory}`], plan.workingDirectory);
-        if (!packageResult.ok) throw new Error(`electron-builder failed. ${packageResult.message}`);
-        const unpacked = join(workDirectory, "win-unpacked");
-        const appAsar = join(unpacked, "resources", "app.asar");
-        if (!(await exists(appAsar)) || (await exists(join(unpacked, "resources", "default_app.asar")))) throw new Error("Electron package failed structural validation: project app.asar is missing or default_app.asar was produced.");
-        emit("complete", 100, `Electron package structurally validated in ${workDirectory}.`);
-        return { ok: true, message: `Electron package created in external workspace ${workDirectory}.`, output: packageResult.output, target, artifactPaths: [target === "installer" ? join(workDirectory, `${project.name} Setup.exe`) : join(workDirectory, `${project.name}.exe`)] };
-      }
 
       emit(
         "building",
@@ -795,6 +910,7 @@ export class DistributionService {
             : "Build completed successfully.",
         target,
         artifactPaths: staged,
+        artifacts: staged.map((path) => artifactMetadata(project, target, path, path)),
       };
     } catch (error) {
       const message =
@@ -842,6 +958,37 @@ export class DistributionService {
     const workspacePkg = await readPackageJson(workspaceRoot);
     const rootPkg = await readPackageJson(root);
 
+    if (target === "executable" || target === "installer") {
+      const blockedPlan = await this.preview(project, target);
+      const repairPackage = rootPkg?.scripts?.[target === "installer" ? "installer" : "package:win"] ? rootPkg : workspacePkg;
+      const repair = safeElectronRepair(repairPackage, inspection.packageManager, target);
+      if (blockedPlan.readiness === "blocked" && repair) {
+        const packageRoot = repairPackage === workspacePkg ? workspaceRoot : root;
+        return {
+          projectId: project.id,
+          projectName: project.name,
+          target,
+          supported: true,
+          detectedRoot: packageRoot,
+          detectedKind: "electron-repair-missing-script",
+          changes: [{ kind: "modify", path: join(packageRoot, "package.json"), description: `Add the missing build:electron script as \\"${repair.command}\\" without changing the existing ${target} script.` }],
+          warnings: ["Repair is based only on two existing, named build scripts.", "No existing script or packaging configuration will be overwritten.", "A backup is created before applying the repair."],
+          message: `Repair available: ${blockedPlan.message}`,
+          problem: blockedPlan.message,
+          confidence: "high",
+          evidence: repair.evidence,
+          automaticSafe: true,
+        };
+      }
+      if (blockedPlan.readiness === "blocked") {
+        return {
+          projectId: project.id, projectName: project.name, target, supported: false, detectedRoot: root, detectedKind: "ambiguous-electron-repair", changes: [],
+          warnings: ["KCx Labs found no single unambiguous existing compilation pipeline."],
+          message: `Manual action required: ${blockedPlan.message}`, problem: blockedPlan.message, confidence: "low", evidence: [], automaticSafe: false,
+        };
+      }
+    }
+
     const electronRoot =
       Boolean(rootPkg?.dependencies?.electron) ||
       Boolean(rootPkg?.devDependencies?.electron);
@@ -852,19 +999,20 @@ export class DistributionService {
 
     if (target === "executable" || target === "installer") {
       if (!electronRoot && !electronWorkspace) {
+        const nativeBackend = inspection.backends?.find((backend) => ["tauri", "dotnet", "pyinstaller"].includes(backend));
         return {
           projectId: project.id,
           projectName: project.name,
           target,
           supported: false,
           detectedRoot: root,
-          detectedKind: "non-electron",
+          detectedKind: nativeBackend ? `native-${nativeBackend}` : "non-electron",
           changes: [],
           warnings: [
-            "No Electron application was detected at the project root or apps/desktop.",
+            nativeBackend ? `Existing ${nativeBackend} evidence is present, but no additional setup is required.` : "No supported Windows packaging backend was detected for this project architecture.",
           ],
           message:
-            "KCx Labs cannot safely prepare Windows Electron packaging for this project yet.",
+            "KCx Labs will not convert this project to Electron. Use an existing supported backend or configure packaging manually.",
         };
       }
 
@@ -1018,6 +1166,7 @@ export class DistributionService {
 
     const root = resolve(project.folder);
     const desktopRoot = join(root, "apps", "desktop");
+    const inspection = await inspectProject(root);
 
     const desktopPkgPath = join(desktopRoot, "package.json");
     const rootPkgPath = join(root, "package.json");
@@ -1085,6 +1234,11 @@ export class DistributionService {
         scripts?: Record<string, string>;
         build?: Record<string, unknown>;
       };
+
+      const repair = safeElectronRepair(parsed, inspection.packageManager, target);
+      if (repair) {
+        parsed.scripts = { ...(parsed.scripts || {}), [repair.script]: repair.command };
+      }
 
       const declaredElectron =
         (
@@ -1277,9 +1431,21 @@ export class DistributionService {
             return {
               target,
               readiness: "ready" as const,
-              reason: plan.message,
+              reason: `${plan.message}${plan.command ? ` Command: ${plan.command} ${plan.args.join(" ")} (cwd: ${plan.workingDirectory})` : ""}`,
               canConfigure: false,
               canBuild: true,
+            };
+          }
+
+          if (plan.readiness === "blocked") {
+            const setup = await this.previewSetup(project, target);
+            return {
+              target,
+              readiness: "blocked" as const,
+              reason: `${plan.message}${setup.supported ? " Repair available after review." : " Manual action required."}`,
+              canConfigure: setup.supported,
+              canBuild: false,
+              diagnostic: plan.diagnostic,
             };
           }
 
@@ -1309,9 +1475,10 @@ export class DistributionService {
           return {
             target,
             readiness: "unsupported" as const,
-            reason: plan.message,
-            canConfigure: false,
-            canBuild: false,
+              reason: plan.message,
+              canConfigure: false,
+              canBuild: false,
+              diagnostic: plan.diagnostic,
           };
         }),
       ),
@@ -1345,6 +1512,7 @@ export class DistributionService {
 
     const completedActions: import("../src/shared/desktop").DistributionAction[] = [];
     const artifactPaths: string[] = [];
+    const artifacts: DistributionArtifactMetadata[] = [];
 
     /*
      * Configuration, release publication, and deployment remain explicit
@@ -1373,10 +1541,12 @@ export class DistributionService {
             projectId: project.id,
             completedActions,
             artifactPaths,
+            artifacts,
           };
         }
 
         artifactPaths.push(...result.artifactPaths);
+        artifacts.push(...(result.artifacts || []));
       }
 
       if (request.actions.includes("build")) {
@@ -1418,6 +1588,7 @@ export class DistributionService {
       projectId: project.id,
       completedActions,
       artifactPaths,
+      artifacts,
     };
   }
   private async collectArtifacts(
@@ -1450,8 +1621,25 @@ export class DistributionService {
         : [
             join(root, "release"),
             join(root, "dist"),
-            join(root, "out"),
-          ];
+          join(root, "out"),
+        ];
+
+    // Monorepos and native backends commonly place output below a workspace.
+    // Discover only shallow, named build roots so collection never walks
+    // dependency trees or an entire registered project.
+    const ignoredOutputFolders = new Set([".git", "node_modules", ".venv", "coverage", ".next", ".vite", "cache", "tmp"]);
+    const outputNames = new Set(["release", "dist", "build", "out", "target", "outputs"]);
+    const discoverRoots = async (folder: string, depth: number): Promise<void> => {
+      if (depth > 3) return;
+      const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        if (!entry.isDirectory() || ignoredOutputFolders.has(entry.name)) continue;
+        const child = join(folder, entry.name);
+        if (outputNames.has(entry.name)) roots.push(child);
+        else if (depth < 3 && (entry.name === "apps" || entry.name === "packages" || entry.name === "android" || entry.name === "desktop" || entry.name === "src-tauri")) await discoverRoots(child, depth + 1);
+      }
+    };
+    await discoverRoots(root, 0);
 
     const allowedExtensions =
       target === "apk"
@@ -1501,7 +1689,7 @@ export class DistributionService {
       }
     }
 
-    return matches;
+    return [...new Set(matches)];
   }
 
   private runCommand(
@@ -1544,8 +1732,8 @@ export class DistributionService {
 
         resolveResult({
           ok: false,
-          message: error.message,
-          output,
+          message: `Command failed to start: ${command} ${args.join(" ")} (cwd: ${cwd}): ${error.message}`,
+          output: redactOutput(output),
         });
       });
 
@@ -1553,13 +1741,14 @@ export class DistributionService {
         if (settled) return;
         settled = true;
 
+        const safeOutput = redactOutput(output);
         resolveResult({
           ok: code === 0,
           message:
             code === 0
               ? "Completed"
-              : `Failed with exit code ${code}`,
-          output,
+              : `Command failed: ${command} ${args.join(" ")} (cwd: ${cwd}), exit code ${code}. Relevant output: ${safeOutput.slice(-4000)}`,
+          output: safeOutput,
         });
       });
     });

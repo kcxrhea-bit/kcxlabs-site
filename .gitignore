@@ -17,3 +17,6 @@ src/desktop/*.sidebar-scroll-backup-*
 
 # Published release binaries are deployed/stored outside Git
 public/downloads/releases/
+
+# KCx Labs local runtime data
+.kcx-user-data/

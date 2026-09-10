@@ -38,8 +38,9 @@ function toLocalInputValue(iso: string): string {
 }
 
 function fromLocalInputValue(value: string): string {
+  if (!value) return "";
   const date = new Date(value);
-  return date.toISOString();
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function toDateInputValue(iso: string | null): string {
@@ -105,6 +106,12 @@ export function EventModal({ existing, initialDay, onClose, onCreate, onUpdate, 
   const [draft, setDraft] = useState<EventDraft>(() =>
     existing ? draftFromEvent(existing) : draftFromDay(initialDay ?? new Date()),
   );
+  const [startInput, setStartInput] = useState(() =>
+    existing ? toLocalInputValue(existing.startAt) : toLocalInputValue(draftFromDay(initialDay ?? new Date()).startAt),
+  );
+  const [endInput, setEndInput] = useState(() =>
+    existing ? toLocalInputValue(existing.endAt) : toLocalInputValue(draftFromDay(initialDay ?? new Date()).endAt),
+  );
   const [revision, setRevision] = useState<number | null>(existing?.revision ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -113,7 +120,10 @@ export function EventModal({ existing, initialDay, onClose, onCreate, onUpdate, 
   const [conflict, setConflict] = useState<SnapCalEvent | null>(null);
 
   useEffect(() => {
-    setDraft(existing ? draftFromEvent(existing) : draftFromDay(initialDay ?? new Date()));
+    const nextDraft = existing ? draftFromEvent(existing) : draftFromDay(initialDay ?? new Date());
+    setDraft(nextDraft);
+    setStartInput(toLocalInputValue(nextDraft.startAt));
+    setEndInput(toLocalInputValue(nextDraft.endAt));
     setRevision(existing?.revision ?? null);
   }, [existing, initialDay]);
 
@@ -124,11 +134,18 @@ export function EventModal({ existing, initialDay, onClose, onCreate, onUpdate, 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (submitting) return;
+    const startAt = draft.allDay ? new Date(`${startInput}T00:00:00`).toISOString() : fromLocalInputValue(startInput);
+    const endAt = draft.allDay ? new Date(`${endInput}T23:59:59`).toISOString() : fromLocalInputValue(endInput);
     if (!draft.title.trim()) {
       setError("Title is required.");
       return;
     }
-    if (new Date(draft.endAt).getTime() < new Date(draft.startAt).getTime()) {
+    if (!startAt || !endAt) {
+      setError("Start and end are required.");
+      return;
+    }
+    const submittedDraft = { ...draft, startAt, endAt };
+    if (new Date(submittedDraft.endAt).getTime() < new Date(submittedDraft.startAt).getTime()) {
       setError("End must not be before start.");
       return;
     }
@@ -138,9 +155,9 @@ export function EventModal({ existing, initialDay, onClose, onCreate, onUpdate, 
     setConflict(null);
     try {
       if (existing) {
-        await onUpdate(existing.id, revision ?? existing.revision, draft);
+        await onUpdate(existing.id, revision ?? existing.revision, submittedDraft);
       } else {
-        await onCreate(draft);
+        await onCreate(submittedDraft);
       }
       onClose();
     } catch (err) {
@@ -265,10 +282,11 @@ export function EventModal({ existing, initialDay, onClose, onCreate, onUpdate, 
               <input
                 type={draft.allDay ? "date" : "datetime-local"}
                 required
-                value={draft.allDay ? toDateInputValue(draft.startAt) : toLocalInputValue(draft.startAt)}
-                onChange={(event) =>
-                  update("startAt", draft.allDay ? new Date(`${event.target.value}T00:00:00`).toISOString() : fromLocalInputValue(event.target.value))
-                }
+                value={draft.allDay ? toDateInputValue(draft.startAt) : startInput}
+                onChange={(event) => {
+                  setStartInput(event.target.value);
+                  if (draft.allDay) update("startAt", new Date(`${event.target.value}T00:00:00`).toISOString());
+                }}
                 className="snapcal-input focus-ring"
               />
             </label>
@@ -277,10 +295,11 @@ export function EventModal({ existing, initialDay, onClose, onCreate, onUpdate, 
               <input
                 type={draft.allDay ? "date" : "datetime-local"}
                 required
-                value={draft.allDay ? toDateInputValue(draft.endAt) : toLocalInputValue(draft.endAt)}
-                onChange={(event) =>
-                  update("endAt", draft.allDay ? new Date(`${event.target.value}T23:59:59`).toISOString() : fromLocalInputValue(event.target.value))
-                }
+                value={draft.allDay ? toDateInputValue(draft.endAt) : endInput}
+                onChange={(event) => {
+                  setEndInput(event.target.value);
+                  if (draft.allDay) update("endAt", new Date(`${event.target.value}T23:59:59`).toISOString());
+                }}
                 className="snapcal-input focus-ring"
               />
             </label>

@@ -103,6 +103,24 @@ Use **Artifacts** when you need to prepare files before opening the Release Publ
 
 KCxLabs cannot create a trustworthy generic EXE for arbitrary source code. It runs the project’s own configured packaging script and reports when one is not available.
 
+### Distribution Center: generic project builds
+
+Distribution Center inspects each registered, available project before offering targets. It detects project-native package managers (`packageManager`, lockfiles, and workspace markers), web/framework builds, Electron builders, Gradle/Capacitor Android projects, Tauri/Rust, Python packaging, and .NET publish evidence. It does not rely on a project name or a fixed `dist`/Electron folder layout.
+
+Each target is reported as **READY**, **PREPARABLE**, **BLOCKED**, or **UNSUPPORTED**. READY means an evidenced command and prerequisites are available. PREPARABLE means an explicit setup preview can add only missing packaging configuration. BLOCKED means a supported prerequisite or command failed. UNSUPPORTED means no safe project-native path was detected. A target is never READY merely because its file extension is expected.
+
+Use **Preview** to review the discovered command, command source, working directory, backend, and expected output before building. Select **Build selected** to run requested targets; shared prerequisites are intended to be reused by the workflow, and dependent targets report the prerequisite that blocked them. ZIP is an independent staged archive, while Source uses committed Git `HEAD` and excludes uncommitted changes.
+
+When a target is PREPARABLE, use **Preview setup** first. Applying setup is explicit, creates a local backup, preserves existing scripts and metadata, reports conflicts instead of overwriting them, and uses the detected package manager. Windows EXE and Installer preparation is backend-neutral: existing Electron, Tauri, .NET publish, Python freezing, native, or other evidenced backends are considered independently. Setup never silently creates a new application architecture or converts an unfamiliar project to Electron.
+
+Blocked targets distinguish an existing broken command chain from absent setup. A missing local script or dependency cycle is shown as **BLOCKED**; if existing project evidence proves one safe repair, **Preview repair** shows the evidence, affected files, commands, and warnings. Ambiguous pipelines show **MANUAL ACTION REQUIRED** and cannot be applied automatically. KCx Labs never silently rewrites a registered project just to make a target build. After an explicit repair, the project is rediscovered and revalidated before it can become READY.
+
+Select **View diagnosis** on an unresolved target to see the concise dependency chain, relevant detected architecture, evidence, candidate resolutions, confidence level, rejected assumptions, ambiguity explanation, and recommended next step. Candidate similarity alone is not enough for automatic repair; only one high-confidence candidate with no unresolved assumptions can be previewed for application.
+
+Failures show the target, discovered command, working directory, exit code, bounded relevant output, and a safe local diagnostic path when available. Credentials, tokens, environment dumps, and `.env` files are not included. Correct the project-native failure, refresh inspection, and retry; prior staged artifacts are not treated as newly successful output.
+
+Examples include a Vite-only project exposing its web build, an Electron Forge project using Forge makers, a pnpm monorepo using its workspace scripts, and a Gradle project exposing `assembleDebug`. Projects without detectable build evidence remain UNSUPPORTED, with the detected evidence and missing evidence shown in **View diagnosis**. Project ZIP is a `project-archive`; Git source ZIP is a `source-archive`; neither is a runnable application release. A backend-produced runnable archive, when supported, is labeled separately. Release Publisher receives and displays this typed classification, provenance, platform, architecture, and staged path; it never treats `.zip` alone as proof of a runnable application. This feature prepares/stages local artifacts only; Release Publisher and deployment remain separate explicit workflows.
+
 ## Patch Import
 
 Patch import is separate from release publishing. It stores a `.patch` or `.diff` file without creating a download release.

@@ -35,11 +35,12 @@ export async function previewRelease(draft: ReleaseDraft, project: CatalogProjec
       "Artifact is not a supported EXE, MSI, ZIP, or APK release file.",
     );
   }
+    if (!draft.artifactMetadata) warnings.push("Artifact classification was not supplied; the file extension does not establish whether this is a runnable release or an archive.");
     return {
       isValid: errors.length === 0,
       errors,
       warnings,
-      artifact: { name: basename(artifactPath), path: artifactPath, bytes: file.size, sha256: hash },
+      artifact: { name: basename(artifactPath), path: artifactPath, bytes: file.size, sha256: hash, metadata: draft.artifactMetadata },
       operations: project ? [
         `Validate ${basename(artifactPath)} for ${project.name}`,
         "Generate website metadata preview",

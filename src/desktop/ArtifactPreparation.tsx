@@ -8,6 +8,9 @@ import type {
   DistributionTarget,
   DistributionWorkflowResult,
   ArtifactRecord,
+  DistributionDiagnostic,
+  DistributionTargetStatus,
+  DistributionArtifactMetadata,
 } from "../shared/desktop";
 
 const targetInfo: Record<
@@ -54,6 +57,26 @@ function isPublishableArtifact(path: string): boolean {
   return /\.(exe|msi|zip|apk)$/i.test(path);
 }
 
+function plannedArtifactMetadata(project: CatalogProject, target: DistributionTarget, path: string): DistributionArtifactMetadata {
+  const kind = target === "zip" ? "project-archive" : target === "source" ? "source-archive" : target === "installer" ? "installer" : target === "executable" ? "application-binary" : "runnable-archive";
+  return { path, filename: path.split(/[\\/]/).pop() || path, projectId: project.id, projectName: project.name, target, kind, runnable: kind === "application-binary" || kind === "installer" || kind === "runnable-archive", architecture: "unknown", provenance: target === "source" ? "git-archive" : target === "zip" ? "project-archive" : "distribution-center" };
+}
+
+function fallbackDiagnosis(target: DistributionTargetStatus): DistributionDiagnostic {
+  return {
+    target: target.target,
+    problemType: "INVALID_CONFIGURATION",
+    summary: "No structured diagnosis was produced.",
+    dependencyChain: [],
+    evidence: [target.reason],
+    detectedArchitecture: [],
+    candidates: [],
+    ambiguityReasons: [],
+    missingEvidence: ["Structured diagnostic metadata for this target"],
+    recommendedNextStep: "Refresh the project inspection and review the target reason before retrying.",
+  };
+}
+
 export function ArtifactPreparation({
   projects,
   setMessage,
@@ -66,6 +89,7 @@ export function ArtifactPreparation({
     artifactPath: string;
     version: string;
     title: string;
+    artifactMetadata?: DistributionArtifactMetadata;
   }) => void;
 }) {
   const [projectId, setProjectId] = useState("");
@@ -82,6 +106,7 @@ export function ArtifactPreparation({
     useState<DistributionWorkflowResult | null>(null);
   const [setupPlan, setSetupPlan] =
     useState<DistributionSetupPlan | null>(null);
+  const [diagnosis, setDiagnosis] = useState<DistributionDiagnostic | null>(null);
   const [loading, setLoading] = useState(false);
   const [building, setBuilding] = useState(false);
   const [applyingSetup, setApplyingSetup] = useState(false);
@@ -125,6 +150,7 @@ export function ArtifactPreparation({
     setLogs([]);
     setResult(null);
     setSetupPlan(null);
+    setDiagnosis(null);
     setError(null);
 
     if (!projectId) return;
@@ -326,6 +352,10 @@ export function ArtifactPreparation({
       await window.kcxDesktop!.openProjectFolder(projectId);
 
     setMessage(response.message);
+  };
+
+  const openDiagnosis = (target: DistributionTargetStatus) => {
+    setDiagnosis(target.diagnostic ?? fallbackDiagnosis(target));
   };
 
   return (
@@ -562,7 +592,12 @@ export function ArtifactPreparation({
                         void previewSetup(target.target)
                       }
                     >
-                      Preview setup
+                      {target.readiness === "blocked" ? "Preview repair" : "Preview setup"}
+                    </button>
+                  )}
+                  {(target.diagnostic || ["blocked", "failed", "needs-setup"].includes(target.readiness)) && (
+                    <button type="button" disabled={building} onClick={() => openDiagnosis(target)}>
+                      View diagnosis
                     </button>
                   )}
                 </article>
@@ -612,6 +647,21 @@ export function ArtifactPreparation({
 
           <p>{setupPlan.message}</p>
 
+          {setupPlan.problem && (
+            <p>
+              <strong>Problem</strong>
+              <br />
+              {setupPlan.problem}
+            </p>
+          )}
+
+          {setupPlan.evidence?.length ? (
+            <>
+              <h4>Evidence</h4>
+              <ul>{setupPlan.evidence.map((item) => <li key={item}>{item}</li>)}</ul>
+            </>
+          ) : null}
+
           <p>
             <strong>Detected type</strong>
             <br />
@@ -654,7 +704,7 @@ export function ArtifactPreparation({
             </>
           )}
 
-          {setupPlan.supported && (
+          {setupPlan.supported && setupPlan.automaticSafe !== false && (
             <>
               <p style={{ fontSize: "0.8rem", opacity: 0.8 }}>
                 Preview only. No project files have been modified yet.
@@ -671,6 +721,22 @@ export function ArtifactPreparation({
               </button>
             </>
           )}
+        </div>
+      )}
+      {diagnosis && (
+        <div className="desktop-card" style={{ marginTop: "1.25rem", padding: "1rem" }}>
+          <p className="desktop-kicker">Target diagnosis</p>
+          <h3>{diagnosis.target.toUpperCase()} — {diagnosis.problemType.replace(/_/g, " ")}</h3>
+          <p>{diagnosis.summary}</p>
+          <h4>Dependency chain</h4>
+          <pre style={{ whiteSpace: "pre-wrap" }}>{diagnosis.dependencyChain.join("\n  -> ")}</pre>
+          <h4>Detected evidence</h4>
+          <ul>{diagnosis.evidence.map((item) => <li key={item}>{item}</li>)}</ul>
+          {diagnosis.detectedArchitecture.length ? <p><strong>Architecture:</strong> {diagnosis.detectedArchitecture.join(", ")}</p> : null}
+          <h4>Candidate resolutions</h4>
+          {diagnosis.candidates.length ? diagnosis.candidates.map((candidate) => <article key={candidate.id}><strong>{candidate.description}</strong><p>Confidence: {candidate.confidence.toUpperCase()} · {candidate.safeToApply ? "safe to preview" : "manual review required"}</p><ul>{candidate.evidence.map((item) => <li key={item}>{item}</li>)}</ul></article>) : <p>No evidence-backed repair candidate was found.</p>}
+          {diagnosis.ambiguityReasons.map((item) => <p key={item}><strong>Why KCx Labs cannot choose:</strong> {item}</p>)}
+          <p><strong>Recommended next step:</strong> {diagnosis.recommendedNextStep}</p>
         </div>
       )}
       {plan && (
@@ -709,6 +775,12 @@ export function ArtifactPreparation({
           </p>
 
           <p>
+            <strong>Command source</strong>
+            <br />
+            <code>{plan.commandSource ?? "project evidence"}</code>
+          </p>
+
+          <p>
             <strong>Expected artifacts</strong>
           </p>
 
@@ -743,6 +815,7 @@ export function ArtifactPreparation({
                             title: version
                               ? `${project.name} ${version}`
                               : project.name,
+                            artifactMetadata: plannedArtifactMetadata(project, plan.target, artifact),
                           });
                         }}
                       >
@@ -854,6 +927,8 @@ export function ArtifactPreparation({
                 <li key={artifact}>
                   <code>{artifact}</code>
 
+                  {result.artifacts?.find((metadata) => metadata.path === artifact || metadata.stagedPath === artifact) && <p><strong>{result.artifacts.find((metadata) => metadata.path === artifact || metadata.stagedPath === artifact)?.kind}</strong> · {result.artifacts.find((metadata) => metadata.path === artifact || metadata.stagedPath === artifact)?.runnable ? "runnable release" : "source/project archive"}</p>}
+
                   {isPublishableArtifact(artifact) && (
                     <div
                       className="desktop-action-row"
@@ -879,6 +954,7 @@ export function ArtifactPreparation({
                             title: version
                               ? `${project.name} ${version}`
                               : project.name,
+                            artifactMetadata: result.artifacts?.find((metadata) => metadata.path === artifact || metadata.stagedPath === artifact),
                           });
                         }}
                       >

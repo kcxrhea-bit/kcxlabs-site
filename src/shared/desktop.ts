@@ -112,7 +112,14 @@ export type CatalogProject = {
 export type NewCatalogProject = Omit<CatalogProject, "id" | "folderStatus" | "createdAt">;
 export type ProjectType = "web" | "electron" | "android" | "capacitor" | "tauri" | "rust" | "python" | "dotnet" | "static";
 export type PackagingBackend = "electron-builder" | "electron-forge" | "electron-packager" | "tauri" | "gradle" | "dotnet" | "pyinstaller" | "web-script" | "archive" | "none";
-export type DiscoveredProject = { name: string; slug: string; folder: string; markers: string[]; packageName?: string; projectTypes?: ProjectType[]; packageManager?: string; backends?: PackagingBackend[] };
+export type DistributionCommand = { intent: "web" | "renderer" | "main" | "executable" | "installer" | "apk" | "aab"; script?: string; command: string; args: string[]; workingDirectory: string; evidence: string };
+export type ArtifactKind = "project-archive" | "source-archive" | "runnable-archive" | "application-binary" | "installer";
+export type DistributionArtifactMetadata = { path: string; stagedPath?: string; filename: string; projectId: string; projectName: string; target: DistributionTarget; kind: ArtifactKind; runnable: boolean; platform?: string; architecture: string; backend?: string; provenance: "distribution-center" | "project-script" | "detected-backend" | "git-archive" | "project-archive" };
+export type ScriptDependencyAnalysis = { entry: string; references: Record<string, string[]>; order: string[]; missing: string[]; cycles: string[][]; valid: boolean };
+export type DistributionProblemType = "MISSING_SCRIPT" | "MISSING_SCRIPT_DEPENDENCY" | "SCRIPT_DEPENDENCY_CYCLE" | "MISSING_PACKAGING_BACKEND" | "MISSING_BUILD_CONFIGURATION" | "AMBIGUOUS_CONFIGURATION" | "INVALID_CONFIGURATION" | "UNSUPPORTED_PROJECT_STRUCTURE";
+export type DistributionCandidateResolution = { id: string; description: string; confidence: "high" | "medium" | "low"; evidence: string[]; assumptions: string[]; requiredChanges: string[]; filesAffected: string[]; packagesRequired: string[]; commands: string[]; safeToApply: boolean; rejectionReasons: string[] };
+export type DistributionDiagnostic = { target: DistributionTarget; problemType: DistributionProblemType; summary: string; dependencyChain: string[]; evidence: string[]; detectedArchitecture: string[]; candidates: DistributionCandidateResolution[]; ambiguityReasons: string[]; missingEvidence: string[]; recommendedNextStep: string };
+export type DiscoveredProject = { name: string; slug: string; folder: string; markers: string[]; packageName?: string; projectTypes?: ProjectType[]; packageManager?: string; backends?: PackagingBackend[]; commands?: DistributionCommand[] };
 export type WebsiteProduct = { name: string; slug: string; folder: string; description: string; category: string; source: "scan" | "catalog"; addedAt: string };
 export type WebsiteChangeRequest = { additions: Omit<WebsiteProduct, "addedAt">[]; removalSlugs: string[] };
 export type WebsiteChangePreview = { additions: WebsiteProduct[]; removals: WebsiteProduct[]; warnings: string[]; canApply: boolean };
@@ -124,13 +131,14 @@ export type ReleaseDraft = {
   title: string;
   notes: string;
   channel: ReleaseChannel;
+  artifactMetadata?: DistributionArtifactMetadata;
 };
 
 export type ReleasePreview = {
   isValid: boolean;
   errors: string[];
   warnings: string[];
-  artifact: { name: string; path: string; bytes: number; sha256: string } | null;
+  artifact: { name: string; path: string; bytes: number; sha256: string; metadata?: DistributionArtifactMetadata } | null;
   operations: string[];
 };
 export type PatchPreview = { isValid: boolean; errors: string[]; fileName: string | null; bytes: number | null; operations: string[] };
@@ -252,6 +260,11 @@ export type DistributionPlan = {
   args: string[];
   expectedArtifacts: string[];
   message: string;
+  readiness?: DistributionReadiness;
+  blockedBy?: string;
+  diagnostics?: { command: string; workingDirectory: string; exitCode: number | null; logPath?: string; stderr?: string };
+  commandSource?: "project-script" | "detected-backend" | "framework-native" | "generated-safe-plan";
+  diagnostic?: DistributionDiagnostic;
 };
 export type DistributionStage =
   | "queued"
@@ -274,9 +287,11 @@ export type DistributionProgress = {
 export type DistributionRunResult = OperationResult & {
   target: DistributionTarget;
   artifactPaths: string[];
+  artifacts?: DistributionArtifactMetadata[];
 };
 export type DistributionReadiness =
   | "ready"
+  | "blocked"
   | "preparable"
   | "needs-input"
   | "needs-setup"
@@ -292,6 +307,7 @@ export type DistributionTargetStatus = {
   reason: string;
   canConfigure: boolean;
   canBuild: boolean;
+  diagnostic?: DistributionDiagnostic;
 };
 
 export type DistributionProjectStatus = {
@@ -321,6 +337,7 @@ export type DistributionWorkflowResult = {
   projectId: string;
   completedActions: DistributionAction[];
   artifactPaths: string[];
+  artifacts?: DistributionArtifactMetadata[];
 };
 export type DistributionSetupChange = {
   kind: "create" | "modify" | "install";
@@ -338,6 +355,10 @@ export type DistributionSetupPlan = {
   changes: DistributionSetupChange[];
   warnings: string[];
   message: string;
+  problem?: string;
+  confidence?: "high" | "medium" | "low";
+  evidence?: string[];
+  automaticSafe?: boolean;
 };
 export type DistributionSetupResult = OperationResult & {
   projectId: string;

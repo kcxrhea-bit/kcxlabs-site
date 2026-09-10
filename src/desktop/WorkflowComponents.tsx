@@ -1,5 +1,5 @@
 import { DragEvent, useState } from "react";
-import type { CatalogProject, NewCatalogProject, PatchPreview, ReleasePreview } from "../shared/desktop";
+import type { CatalogProject, DistributionArtifactMetadata, NewCatalogProject, PatchPreview, ReleasePreview } from "../shared/desktop";
 
 function DropZone({ accept, label, onPath }: { accept: string; label: string; onPath: (path: string) => void }) { const drop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); const file = event.dataTransfer.files.item(0); if (file) onPath(window.kcxDesktop!.getDroppedPath(file)); }; return <div className="desktop-drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={drop}><strong>{label}</strong><small>Drag a {accept} here from File Explorer, or use the browse action.</small></div>; }
 function Result({ children, bad = false }: { children: string; bad?: boolean }) { return <p className={bad ? "desktop-result desktop-error" : "desktop-result"}>{children}</p>; }
@@ -23,6 +23,7 @@ export function ReleaseWizard({
     artifactPath: string;
     version: string;
     title: string;
+    artifactMetadata?: DistributionArtifactMetadata;
   } | null;
   onPublished?: () => void;
 }) {
@@ -39,6 +40,7 @@ export function ReleaseWizard({
   const [title, setTitle] = useState(
     initialDraft?.title ?? "",
   );
+  const [artifactMetadata, setArtifactMetadata] = useState<DistributionArtifactMetadata | undefined>(initialDraft?.artifactMetadata);
   const [preview, setPreview] =
     useState<ReleasePreview | null>(null);
 
@@ -49,6 +51,7 @@ export function ReleaseWizard({
     title,
     notes: "",
     channel: "stable" as const,
+    artifactMetadata,
   };
 
   const validate = async () => {
@@ -182,6 +185,7 @@ export function ReleaseWizard({
 
               if (selected) {
                 setArtifactPath(selected);
+                setArtifactMetadata(undefined);
               }
             }}
           >
@@ -197,6 +201,8 @@ export function ReleaseWizard({
             label="Drop a release artifact"
             onPath={setArtifactPath}
           />
+
+          <ArtifactClassification metadata={artifactMetadata} />
 
           <div className="desktop-action-row">
             <button
@@ -234,6 +240,8 @@ export function ReleaseWizard({
               SHA-256: {preview.artifact.sha256}
             </small>
           )}
+
+          <ArtifactClassification metadata={preview?.artifact?.metadata ?? artifactMetadata} />
 
           {preview?.errors.map((error) => (
             <Result bad key={error}>
@@ -291,6 +299,14 @@ export function ReleaseWizard({
       )}
     </section>
   );
+}
+
+function ArtifactClassification({ metadata }: { metadata?: DistributionArtifactMetadata }) {
+  return <div className="desktop-review-panel">
+    <strong>Artifact classification</strong>
+    {metadata ? <p>{metadata.kind} · {metadata.runnable ? "runnable release" : "source/project archive"} · target {metadata.target} · platform {metadata.platform ?? "unknown"} · architecture {metadata.architecture}</p> : <p className="desktop-warning">Unclassified artifact. The file extension alone does not establish a runnable application.</p>}
+    {metadata && <small className="desktop-path">Provenance: {metadata.provenance}{metadata.stagedPath ? ` · staged path: ${metadata.stagedPath}` : ""}</small>}
+  </div>;
 }
 export function PatchImport({ projects, setMessage }: { projects: CatalogProject[]; setMessage: (message: string) => void }) {
   const [projectId, setProjectId] = useState(""); const [patchPath, setPatchPath] = useState(""); const [preview, setPreview] = useState<PatchPreview | null>(null); const check = async () => { const result = await window.kcxDesktop!.previewPatch(projectId, patchPath); setPreview(result); setMessage(result.isValid ? "Patch preview ready" : "Patch preview needs attention"); };

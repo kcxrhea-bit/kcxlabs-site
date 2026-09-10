@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { Activity, Boxes, CloudUpload, Database, FileText, Film, FolderKanban, Gauge, History, HelpCircle, MonitorPlay, Palette, Rocket, Settings, Wrench } from "lucide-react";
-import type { ActivityEntry, CatalogProject, DeploymentProgress, DeploymentReadiness, DeploymentResult, DesktopStatus, DiscoveredProject, NewCatalogProject, PreviewStatus, ThemeScan, WebsiteChangePreview, WebsiteChangeRequest, ReleaseStorageSettings } from "../shared/desktop";
+import type { ActivityEntry, CatalogProject, DeploymentProgress, DeploymentReadiness, DeploymentResult, DesktopStatus, DiscoveredProject, DistributionArtifactMetadata, NewCatalogProject, PreviewStatus, ThemeScan, WebsiteChangePreview, WebsiteChangeRequest, ReleaseStorageSettings } from "../shared/desktop";
 import { PatchImport, ProjectFolderRegistration, ReleaseWizard } from "./WorkflowComponents";
 import { ArtifactPreparation } from "./ArtifactPreparation";
 import { MediaCenter } from "./MediaCenter";
@@ -13,6 +13,7 @@ type ReleaseHandoff = {
   artifactPath: string;
   version: string;
   title: string;
+  artifactMetadata?: DistributionArtifactMetadata;
 };
 const navigation: Array<{ label: PageName; icon: typeof Gauge; group: string; description: string }> = [
   { label: "Dashboard", icon: Gauge, group: "Home", description: "Start here" },
