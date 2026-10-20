@@ -87,6 +87,15 @@ await Promise.all([
     format: "cjs",
     outfile: "dist-electron/api-http.cjs",
   }),
+  // The repository layer on its own, so the opt-in real-PostgreSQL camera
+  // test (tests/camera-postgres.test.mjs) runs the exact SQL the routes run,
+  // through a driver-agnostic tagged-template `Db`.
+  build({
+    ...shared,
+    entryPoints: ["server/media-api/_lib/db.ts"],
+    format: "cjs",
+    outfile: "dist-electron/api-db.cjs",
+  }),
   // A handful of real routes, bundled as-is (their actual `toNodeHandler`
   // export, not a reimplementation), so the adapter test can invoke them
   // with an unauthenticated/malformed request and prove they return through
@@ -102,7 +111,23 @@ await Promise.all([
       "server/media-api/routes/media/check-hash.ts",
       "server/media-api/routes/media/upload-authorize.ts",
       "server/media-api/routes/media/finalize.ts",
+      "server/media-api/routes/media/archive/auth/login.ts",
+      "server/media-api/routes/media/archive/auth/logout.ts",
+      "server/media-api/routes/media/archive/list.ts",
+      "server/media-api/routes/media/archive/[id]/play.ts",
+      "server/media-api/routes/media/archive/[id]/download.ts",
       "server/media-api/routes/archive/jobs.ts",
+      "server/media-api/routes/camera/auth/login.ts",
+      "server/media-api/routes/camera/auth/logout.ts",
+      "server/media-api/routes/camera/upload-authorize.ts",
+      "server/media-api/routes/camera/finalize.ts",
+      "server/media-api/routes/camera/archive/list.ts",
+      "server/media-api/routes/camera/archive/budget.ts",
+      "server/media-api/routes/camera/archive/[id]/play.ts",
+      "server/media-api/routes/camera/archive/[id]/download.ts",
+      "server/media-api/routes/camera/archive/[id]/protect.ts",
+      "server/media-api/routes/camera/archive/[id]/unprotect.ts",
+      "server/media-api/routes/camera/maintenance/cleanup.ts",
     ],
     format: "cjs",
     outdir: "dist-electron/routes",

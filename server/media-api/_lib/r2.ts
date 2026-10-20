@@ -23,9 +23,11 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { R2Config } from "./config.js";
+import { CAMERA_R2_BUCKET, type AppConfig, type R2Config } from "./config.js";
+import type { CameraObjectOperations, ListedObject } from "./camera-storage.js";
 
 /**
  * R2 requires region "auto". The S3 SDK insists on a region being set, and any
@@ -57,6 +59,16 @@ export type R2Context = {
 
 export function r2Context(config: R2Config): R2Context {
   return { client: createR2Client(config), bucket: config.bucket };
+}
+
+/**
+ * Camera bucket access, or null when the dedicated camera token is missing
+ * or invalid (callers answer 503). Re-asserts the bucket name so no caller
+ * can point camera reads, writes, or deletes at another bucket.
+ */
+export function cameraR2Context(config: AppConfig): R2Context | null {
+  if (config.cameraR2 === null || config.cameraR2.bucket !== CAMERA_R2_BUCKET) return null;
+  return r2Context(config.cameraR2);
 }
 
 // ─── Object inspection ───────────────────────────────────────────────────────
@@ -290,4 +302,34 @@ export async function presignDownload(
  */
 export async function deleteObject(context: R2Context, key: string): Promise<void> {
   await context.client.send(new DeleteObjectCommand({ Bucket: context.bucket, Key: key }));
+}
+
+/** One page of keys under a prefix. Used only by the bounded camera orphan sweep. */
+export async function listObjects(
+  context: R2Context,
+  input: { prefix: string; cursor: string | null; limit: number },
+): Promise<{ objects: ListedObject[]; nextCursor: string | null }> {
+  const response = await context.client.send(
+    new ListObjectsV2Command({
+      Bucket: context.bucket,
+      Prefix: input.prefix,
+      MaxKeys: input.limit,
+      ...(input.cursor ? { ContinuationToken: input.cursor } : {}),
+    }),
+  );
+  return {
+    objects: (response.Contents ?? [])
+      .filter((item) => typeof item.Key === "string")
+      .map((item) => ({ key: item.Key as string, lastModified: item.LastModified?.toISOString() ?? null })),
+    nextCursor: response.IsTruncated && response.NextContinuationToken ? response.NextContinuationToken : null,
+  };
+}
+
+/** Camera bucket operations for the deletion workflow (camera-storage.ts). */
+export function cameraObjectOperations(context: R2Context): CameraObjectOperations {
+  return {
+    deleteObject: (key) => deleteObject(context, key),
+    objectExists: async (key) => (await headObject(context, key)).exists,
+    listObjects: (input) => listObjects(context, input),
+  };
 }

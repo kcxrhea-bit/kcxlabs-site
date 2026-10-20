@@ -20,9 +20,12 @@ export const SECRET_KEYS = [
   "DATABASE_URL",
   "R2_SECRET_ACCESS_KEY",
   "R2_ACCESS_KEY_ID",
+  "CAMERA_R2_SECRET_ACCESS_KEY",
+  "CAMERA_R2_ACCESS_KEY_ID",
   "CLOUDFLARE_ANALYTICS_TOKEN",
   "OWNER_PASSWORD_HASH",
   "SESSION_SECRET",
+  "CRON_SECRET",
 ] as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[number];
@@ -84,9 +87,17 @@ export type AuthConfig = {
   sessionSecret: string;
 };
 
+/** Camera backup budget, in bytes. Decimal 5,000,000,000 default — matches the user's spec exactly, not GiB. */
+export type CameraConfig = {
+  budgetBytes: number;
+};
+
 export type AppConfig = {
   database: DatabaseConfig;
   r2: R2Config;
+  /** Dedicated bucket for KCxCamBridge camera backups. Counts toward the 5 GB camera budget; `r2` never does. Null when the camera token is missing or invalid — camera routes then fail closed. */
+  cameraR2: R2Config | null;
+  camera: CameraConfig;
   analytics: AnalyticsConfig | null;
   auth: AuthConfig;
   limits: LimitsConfig;
@@ -131,6 +142,87 @@ export function loadR2Config(env: NodeJS.ProcessEnv = process.env): R2Config {
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     publicHost,
   };
+}
+
+/** The only bucket camera backups may ever touch. */
+export const CAMERA_R2_BUCKET = "kcxlabs-camera";
+
+/**
+ * Camera backups live in their OWN R2 bucket, isolated from the general
+ * Media Center bucket on purpose: the 5 GB camera budget must only ever
+ * reflect bytes in this bucket.
+ *
+ * Fails closed. The camera token is required explicitly and NEVER falls back
+ * to the general `R2_*` credentials — that token is scoped to other buckets,
+ * so a fallback would either fail at runtime or over-privilege this feature.
+ * Only the (non-secret) account id may be shared with `R2_ACCOUNT_ID`.
+ */
+export function loadCameraR2Config(env: NodeJS.ProcessEnv = process.env): R2Config {
+  const missing: string[] = [];
+  const accountId =
+    read(env, "CAMERA_R2_ACCOUNT_ID") ?? read(env, "R2_ACCOUNT_ID") ?? (missing.push("CAMERA_R2_ACCOUNT_ID"), "");
+  const accessKeyId = read(env, "CAMERA_R2_ACCESS_KEY_ID") ?? (missing.push("CAMERA_R2_ACCESS_KEY_ID"), "");
+  const secretAccessKey =
+    read(env, "CAMERA_R2_SECRET_ACCESS_KEY") ?? (missing.push("CAMERA_R2_SECRET_ACCESS_KEY"), "");
+  const bucket = read(env, "CAMERA_R2_BUCKET") ?? CAMERA_R2_BUCKET;
+
+  if (missing.length > 0) throw new ConfigError(missing, []);
+
+  // Shape and isolation checks. Names only in errors — never values.
+  const invalid: string[] = [];
+  if (!/^[0-9a-f]{32}$/i.test(accountId)) invalid.push("CAMERA_R2_ACCOUNT_ID (expected a 32-character account id)");
+  if (!/^[0-9a-f]{32}$/i.test(accessKeyId)) invalid.push("CAMERA_R2_ACCESS_KEY_ID (expected a 32-character R2 access key id)");
+  if (!/^[0-9a-f]{64}$/i.test(secretAccessKey)) invalid.push("CAMERA_R2_SECRET_ACCESS_KEY (expected a 64-character R2 secret)");
+  if (accessKeyId === read(env, "R2_ACCESS_KEY_ID") || secretAccessKey === read(env, "R2_SECRET_ACCESS_KEY")) {
+    invalid.push("CAMERA_R2_ACCESS_KEY_ID (must be a dedicated camera token, not the Media Center token)");
+  }
+  if (bucket !== CAMERA_R2_BUCKET) invalid.push(`CAMERA_R2_BUCKET (must be ${CAMERA_R2_BUCKET})`);
+  // Camera footage is private: playback is presigned only, so a public host is a misconfiguration.
+  if (read(env, "CAMERA_R2_PUBLIC_HOST") !== undefined) invalid.push("CAMERA_R2_PUBLIC_HOST (must be unset; the camera bucket is private)");
+  if (invalid.length > 0) throw new ConfigError([], invalid);
+
+  return {
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucket,
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    publicHost: null,
+  };
+}
+
+/**
+ * Lazy variant used by `loadAppConfig`: a missing or invalid camera token
+ * must disable ONLY the camera routes (they answer 503), never Media Center
+ * or SnapCal, which share the same config load.
+ */
+export function loadOptionalCameraR2Config(env: NodeJS.ProcessEnv = process.env): R2Config | null {
+  try {
+    return loadCameraR2Config(env);
+  } catch (error) {
+    if (error instanceof ConfigError) return null;
+    throw error;
+  }
+}
+
+/**
+ * Shared secret for scheduled maintenance routes. Vercel Cron sends it as
+ * `Authorization: Bearer <CRON_SECRET>` when a variable with exactly this
+ * name exists. Server-only: never sent to the browser or the desktop client.
+ * Null (routes fail closed) when unset or too short to be a real secret.
+ */
+export function loadCronSecret(env: NodeJS.ProcessEnv = process.env): string | null {
+  const secret = read(env, "CRON_SECRET");
+  return secret !== undefined && secret.length >= 32 ? secret : null;
+}
+
+const DECIMAL_GB = 1_000_000_000;
+
+export function loadCameraConfig(env: NodeJS.ProcessEnv = process.env): CameraConfig {
+  const raw = read(env, "CAMERA_BUDGET_BYTES");
+  if (raw === undefined) return { budgetBytes: 5 * DECIMAL_GB };
+  const parsed = Number(raw);
+  return { budgetBytes: Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 5 * DECIMAL_GB };
 }
 
 /**
@@ -199,6 +291,8 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     database: loadDatabaseConfig(env),
     r2: loadR2Config(env),
+    cameraR2: loadOptionalCameraR2Config(env),
+    camera: loadCameraConfig(env),
     analytics: loadAnalyticsConfig(env),
     auth: loadAuthConfig(env),
     limits: loadLimitsConfig(env),
@@ -224,6 +318,12 @@ const ALL_KEYS = [
   "R2_SECRET_ACCESS_KEY",
   "R2_BUCKET",
   "R2_PUBLIC_HOST",
+  "CAMERA_R2_ACCOUNT_ID",
+  "CAMERA_R2_ACCESS_KEY_ID",
+  "CAMERA_R2_SECRET_ACCESS_KEY",
+  "CAMERA_R2_BUCKET",
+  "CAMERA_R2_PUBLIC_HOST",
+  "CAMERA_BUDGET_BYTES",
   "CLOUDFLARE_ANALYTICS_TOKEN",
   "OWNER_EMAIL",
   "OWNER_PASSWORD_HASH",
@@ -232,6 +332,7 @@ const ALL_KEYS = [
   "MONTHLY_UPLOAD_QUOTA_BYTES",
   "UPLOADS_DISABLED",
   "PUBLIC_SITE_ORIGIN",
+  "CRON_SECRET",
 ] as const;
 
 const OPTIONAL_KEYS = new Set([
@@ -242,6 +343,13 @@ const OPTIONAL_KEYS = new Set([
   "UPLOADS_DISABLED",
   "PUBLIC_SITE_ORIGIN",
   "R2_BUCKET",
+  "CAMERA_R2_ACCOUNT_ID",
+  "CAMERA_R2_ACCESS_KEY_ID",
+  "CAMERA_R2_SECRET_ACCESS_KEY",
+  "CAMERA_R2_BUCKET",
+  "CAMERA_R2_PUBLIC_HOST",
+  "CAMERA_BUDGET_BYTES",
+  "CRON_SECRET",
 ]);
 
 /**

@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/camera/maintenance/cleanup",
+      "schedule": "17 11 * * *"
+    }
+  ],
   "redirects": [
     {
       "source": "/snapcal",

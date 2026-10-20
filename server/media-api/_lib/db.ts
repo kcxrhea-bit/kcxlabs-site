@@ -16,6 +16,7 @@
 
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import type { DatabaseConfig } from "./config.js";
+import type { DeletionCandidate } from "./camera-storage.js";
 import type {
   ArchiveState,
   MediaItem,
@@ -274,6 +275,34 @@ export function mediaRepository(db: Db) {
         ORDER BY featured DESC, sort_order ASC, uploaded_at DESC NULLS LAST
         LIMIT ${Math.min(limit, 200)} OFFSET ${Math.max(0, offset)}
       `;
+      return rows.map(mapMediaRow);
+    },
+
+    /**
+     * Camera Archive listing: owner's own media, optionally narrowed to one
+     * camera. `game` doubles as the camera label for KCxCamBridge uploads
+     * (NVIDIA-clip parsing already treats the leading filename token as a
+     * free-text label; camera names "kitchen"/"living-room" are just another
+     * value in that same column). This stays a plain repository method, not
+     * a route-level filter, so the camera scoping can never be bypassed by a
+     * caller forgetting to apply it. Ordered by the best available recording
+     * timestamp — `recorded_at` when the uploader supplied one, else
+     * `uploaded_at` — newest first.
+     */
+    async listForOwnerByCamera(ownerId: string, camera: string | null, limit = 200, offset = 0): Promise<MediaItem[]> {
+      const rows = camera
+        ? await db`
+            SELECT * FROM media
+            WHERE owner_id = ${ownerId} AND status <> 'deleted' AND game = ${camera}
+            ORDER BY COALESCE(recorded_at, uploaded_at) DESC NULLS LAST, created_at DESC
+            LIMIT ${Math.min(limit, 500)} OFFSET ${Math.max(0, offset)}
+          `
+        : await db`
+            SELECT * FROM media
+            WHERE owner_id = ${ownerId} AND status <> 'deleted'
+            ORDER BY COALESCE(recorded_at, uploaded_at) DESC NULLS LAST, created_at DESC
+            LIMIT ${Math.min(limit, 500)} OFFSET ${Math.max(0, offset)}
+          `;
       return rows.map(mapMediaRow);
     },
 
@@ -594,6 +623,490 @@ export function eventLog(db: Db) {
         INSERT INTO media_events (event, media_id, owner_id, detail)
         VALUES (${input.event}, ${input.mediaId ?? null}, ${input.ownerId ?? null}, ${input.detail ?? null})
       `;
+    },
+  };
+}
+
+// ─── Camera archive repository ───────────────────────────────────────────────
+//
+// Fully isolated from `media`/`mediaRepository`: a dedicated table, a
+// dedicated bucket (see `cameraR2` in config), and a budget that only ever
+// sums THIS table. Nothing here joins or reads the `media` table, and
+// nothing in `mediaRepository` reads this one — that separation is what
+// keeps the 5 GB camera budget honest and keeps /clips and /c/:publicId
+// structurally unable to surface a camera recording.
+
+/** `pending_delete`: claimed for removal, R2 delete not yet confirmed — still counted in the budget. See camera-storage.ts. */
+export type CameraRecordingStatus = "reserved" | "active" | "pending_delete" | "deleted";
+
+export type CameraRecording = {
+  id: string;
+  recordingId: string;
+  ownerId: string;
+  camera: string;
+  cameraName: string;
+  storageObjectKey: string;
+  mimeType: string;
+  sizeBytes: number;
+  reservedBytes: number;
+  sha256: string;
+  width: number | null;
+  height: number | null;
+  codec: string | null;
+  recordedStartAt: string;
+  recordedEndAt: string;
+  durationSeconds: number | null;
+  protected: boolean;
+  status: CameraRecordingStatus;
+  createdAt: string;
+  finalizedAt: string | null;
+  deletedAt: string | null;
+};
+
+function mapCameraRow(row: MediaRow): CameraRecording {
+  return {
+    id: asString(row.id),
+    recordingId: asString(row.recording_id),
+    ownerId: asString(row.owner_id),
+    camera: asString(row.camera),
+    cameraName: asString(row.camera_name),
+    storageObjectKey: asString(row.storage_object_key),
+    mimeType: asString(row.mime_type),
+    sizeBytes: asNumber(row.size_bytes),
+    reservedBytes: asNumber(row.reserved_bytes),
+    sha256: asString(row.sha256),
+    width: asNullableNumber(row.width),
+    height: asNullableNumber(row.height),
+    codec: asNullableString(row.codec),
+    recordedStartAt: asString(asDate(row.recorded_start_at)),
+    recordedEndAt: asString(asDate(row.recorded_end_at)),
+    durationSeconds: asNullableNumber(row.duration_seconds),
+    protected: row.protected === true,
+    status: asString(row.status) as CameraRecordingStatus,
+    createdAt: asString(asDate(row.created_at)),
+    finalizedAt: asDate(row.finalized_at),
+    deletedAt: asDate(row.deleted_at),
+  };
+}
+
+function mapDeletionCandidate(row: MediaRow): DeletionCandidate {
+  return { id: asString(row.id), storageObjectKey: asString(row.storage_object_key), sizeBytes: asNumber(row.size_bytes) };
+}
+
+export function cameraRepository(db: Db) {
+  return {
+    /** Idempotency lookup: an in-flight or already-finalized reservation for this recording. */
+    async byRecordingId(recordingId: string): Promise<CameraRecording | null> {
+      const rows = await db`
+        SELECT * FROM camera_recordings WHERE recording_id = ${recordingId} AND status <> 'deleted'
+      `;
+      return rows.length === 0 ? null : mapCameraRow(rows[0]);
+    },
+
+    async byId(id: string): Promise<CameraRecording | null> {
+      const rows = await db`SELECT * FROM camera_recordings WHERE id = ${id} AND status <> 'deleted'`;
+      return rows.length === 0 ? null : mapCameraRow(rows[0]);
+    },
+
+    /**
+     * Current live accounting: active bytes (split protected/unprotected),
+     * outstanding reservations, and objects whose deletion is not yet
+     * confirmed (they still occupy the bucket).
+     */
+    async usage(): Promise<{ protectedBytes: number; unprotectedBytes: number; reservedBytes: number; pendingDeleteBytes: number }> {
+      const rows = await db`
+        SELECT
+          COALESCE(SUM(CASE WHEN status = 'active' AND protected THEN size_bytes ELSE 0 END), 0) AS protected_bytes,
+          COALESCE(SUM(CASE WHEN status = 'active' AND NOT protected THEN size_bytes ELSE 0 END), 0) AS unprotected_bytes,
+          COALESCE(SUM(CASE WHEN status = 'reserved' THEN reserved_bytes ELSE 0 END), 0) AS reserved_bytes,
+          COALESCE(SUM(CASE WHEN status = 'pending_delete' THEN size_bytes ELSE 0 END), 0) AS pending_delete_bytes
+        FROM camera_recordings
+      `;
+      return {
+        protectedBytes: asNumber(rows[0]?.protected_bytes),
+        unprotectedBytes: asNumber(rows[0]?.unprotected_bytes),
+        reservedBytes: asNumber(rows[0]?.reserved_bytes),
+        pendingDeleteBytes: asNumber(rows[0]?.pending_delete_bytes),
+      };
+    },
+
+    /**
+     * Oldest-first rotation CLAIM, as ONE atomic statement. Nothing is
+     * deleted here: victims move to `pending_delete` with their key and size
+     * intact, and only `confirmDeleted` (after R2 confirms) retires them.
+     *
+     * The shortfall is computed from the LIVE table inside the statement,
+     * counting active + reserved bytes but NOT bytes already pending
+     * deletion — those are already on their way out, so a concurrent
+     * authorization that already claimed victims makes this one claim
+     * nothing extra (no over-rotation). Reservations, in contrast, keep
+     * counting pending bytes as used (see `reserve`), so space is never
+     * handed out before its delete is confirmed.
+     *
+     * Selects the smallest oldest-first prefix of unprotected active rows
+     * whose cumulative size reaches the shortfall. If the unprotected total
+     * can't reach it (protected rows are blocking), nothing is claimed — no
+     * partial, insufficient rotation. The UPDATE re-checks `status = 'active'
+     * AND protected = FALSE` per row, so a concurrent protect or a concurrent
+     * claim of the same row is never overridden.
+     */
+    async claimForRotation(input: { incomingBytes: number; budgetBytes: number }): Promise<DeletionCandidate[]> {
+      const rows = await db`
+        WITH committed AS (
+          SELECT
+            COALESCE(SUM(CASE WHEN status = 'active' THEN size_bytes ELSE 0 END), 0)
+            + COALESCE(SUM(CASE WHEN status = 'reserved' THEN reserved_bytes ELSE 0 END), 0) AS bytes
+          FROM camera_recordings
+        ),
+        need AS (
+          SELECT bytes + ${input.incomingBytes} - ${input.budgetBytes} AS shortfall FROM committed
+        ),
+        unprotected AS (
+          SELECT id, size_bytes,
+                 SUM(size_bytes) OVER (ORDER BY recorded_start_at ASC, id ASC) AS running_total,
+                 SUM(size_bytes) OVER () AS total_available
+          FROM camera_recordings
+          WHERE status = 'active' AND protected = FALSE
+        ),
+        victims AS (
+          SELECT unprotected.id FROM unprotected, need
+          WHERE need.shortfall > 0
+            AND (unprotected.running_total - unprotected.size_bytes) < need.shortfall
+            AND unprotected.total_available >= need.shortfall
+        )
+        UPDATE camera_recordings SET
+          status = 'pending_delete', delete_reason = 'rotation', delete_requested_at = now(),
+          delete_attempts = 1, last_delete_attempt_at = now()
+        WHERE id IN (SELECT id FROM victims) AND status = 'active' AND protected = FALSE
+        RETURNING id, storage_object_key, size_bytes
+      `;
+      return rows.map(mapDeletionCandidate);
+    },
+
+    /**
+     * Abandoned uploads: a `reserved` row whose upload URL was last issued
+     * more than `ttlMinutes` ago moves to `pending_delete`. Its reserved size
+     * becomes its accounted size, so the budget keeps covering whatever
+     * partial object may exist until R2 confirms the delete. `markActive`
+     * only accepts `status = 'reserved'`, so a finalize racing this claim
+     * either wins first (row is active, not claimed) or fails cleanly.
+     * SKIP LOCKED lets concurrent sweeps split the work instead of blocking.
+     *
+     * The batch is picked in a MATERIALIZED CTE, never `WHERE id IN (SELECT
+     * … LIMIT … SKIP LOCKED)`: Postgres may re-execute such a subquery during
+     * the join, which (verified against real Postgres) silently exceeds LIMIT.
+     */
+    async claimStaleReservations(input: { ttlMinutes: number; limit: number }): Promise<DeletionCandidate[]> {
+      const rows = await db`
+        WITH picked AS MATERIALIZED (
+          SELECT id FROM camera_recordings
+          WHERE status = 'reserved' AND authorized_at < now() - make_interval(mins => ${input.ttlMinutes})
+          ORDER BY authorized_at ASC
+          LIMIT ${input.limit}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE camera_recordings SET
+          status = 'pending_delete', delete_reason = 'expired_reservation', delete_requested_at = now(),
+          size_bytes = reserved_bytes, reserved_bytes = 0,
+          delete_attempts = 1, last_delete_attempt_at = now()
+        FROM picked
+        WHERE camera_recordings.id = picked.id AND camera_recordings.status = 'reserved'
+        RETURNING camera_recordings.id, camera_recordings.storage_object_key, camera_recordings.size_bytes
+      `;
+      return rows.map(mapDeletionCandidate);
+    },
+
+    /**
+     * Retry queue for interrupted deletions. Leasing (bumping the attempt
+     * counter and timestamp in the same UPDATE) means two concurrent sweeps
+     * never both pick the same row, and exponential backoff (30 s doubling,
+     * capped at 1 h) keeps an R2 outage from being hammered. Rows that hit
+     * `maxAttempts` stay `pending_delete` — still counted, never silently
+     * dropped — for manual review.
+     */
+    async leasePendingDeletions(input: { limit: number; maxAttempts: number }): Promise<DeletionCandidate[]> {
+      const rows = await db`
+        WITH picked AS MATERIALIZED (
+          SELECT id FROM camera_recordings
+          WHERE status = 'pending_delete'
+            AND delete_attempts < ${input.maxAttempts}
+            AND (last_delete_attempt_at IS NULL
+                 OR last_delete_attempt_at < now() - make_interval(secs => LEAST(3600, 30 * power(2, delete_attempts))))
+          ORDER BY delete_requested_at ASC
+          LIMIT ${input.limit}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE camera_recordings SET
+          delete_attempts = camera_recordings.delete_attempts + 1, last_delete_attempt_at = now()
+        FROM picked
+        WHERE camera_recordings.id = picked.id AND camera_recordings.status = 'pending_delete'
+        RETURNING camera_recordings.id, camera_recordings.storage_object_key, camera_recordings.size_bytes
+      `;
+      return rows.map(mapDeletionCandidate);
+    },
+
+    /** Only after R2 confirmed the delete. Idempotent: a second confirmation of the same row is a no-op. */
+    async confirmDeleted(id: string): Promise<boolean> {
+      const rows = await db`
+        UPDATE camera_recordings SET status = 'deleted', deleted_at = now(), last_delete_error = NULL
+        WHERE id = ${id} AND status = 'pending_delete'
+        RETURNING id
+      `;
+      return rows.length > 0;
+    },
+
+    /** Keeps the row pending (key and size intact) and records a short, non-secret failure code. */
+    async recordDeleteFailure(id: string, code: string): Promise<void> {
+      await db`
+        UPDATE camera_recordings SET last_delete_error = ${code.slice(0, 64)}
+        WHERE id = ${id} AND status = 'pending_delete'
+      `;
+    },
+
+    /**
+     * Expired reservations whose late-upload grace period has passed and that
+     * haven't been checked yet. Leased like deletions (attempt counter +
+     * hourly backoff, SKIP LOCKED) so concurrent runs split the work.
+     * Rotated rows never qualify: they were finalized, so no PUT can follow.
+     */
+    async leaseLateUploadChecks(input: { graceMinutes: number; limit: number; maxAttempts: number }): Promise<DeletionCandidate[]> {
+      const rows = await db`
+        WITH picked AS MATERIALIZED (
+          SELECT id FROM camera_recordings
+          WHERE status = 'deleted' AND delete_reason = 'expired_reservation'
+            AND late_upload_checked_at IS NULL
+            AND deleted_at < now() - make_interval(mins => ${input.graceMinutes})
+            AND late_upload_check_attempts < ${input.maxAttempts}
+            AND (last_late_upload_check_at IS NULL OR last_late_upload_check_at < now() - interval '1 hour')
+          ORDER BY deleted_at ASC
+          LIMIT ${input.limit}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE camera_recordings SET
+          late_upload_check_attempts = camera_recordings.late_upload_check_attempts + 1, last_late_upload_check_at = now()
+        FROM picked
+        WHERE camera_recordings.id = picked.id AND camera_recordings.status = 'deleted'
+        RETURNING camera_recordings.id, camera_recordings.storage_object_key, camera_recordings.size_bytes
+      `;
+      return rows.map(mapDeletionCandidate);
+    },
+
+    async markLateUploadChecked(id: string): Promise<void> {
+      await db`UPDATE camera_recordings SET late_upload_checked_at = now() WHERE id = ${id} AND status = 'deleted'`;
+    },
+
+    /** Of the given keys, those still referenced by a live (non-deleted) row — never treated as orphans. */
+    async liveObjectKeys(keys: string[]): Promise<Set<string>> {
+      if (keys.length === 0) return new Set();
+      const rows = await db`
+        SELECT storage_object_key FROM camera_recordings
+        WHERE storage_object_key = ANY(${keys}::text[]) AND status <> 'deleted'
+      `;
+      return new Set(rows.map((r) => asString(r.storage_object_key)));
+    },
+
+    /**
+     * Single-runner lease for the scheduled cleanup, one atomic upsert: it
+     * succeeds when no lock exists or the existing one is older than the TTL
+     * (a crashed run). Concurrent invocations get false and exit.
+     */
+    async tryAcquireCleanupLock(input: { holder: string; ttlSeconds: number }): Promise<boolean> {
+      const rows = await db`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ('camera_cleanup_lock', ${input.holder}, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        WHERE app_settings.updated_at < now() - make_interval(secs => ${input.ttlSeconds})
+        RETURNING value
+      `;
+      return rows.length > 0 && asString(rows[0].value) === input.holder;
+    },
+
+    async releaseCleanupLock(holder: string): Promise<void> {
+      await db`DELETE FROM app_settings WHERE key = 'camera_cleanup_lock' AND value = ${holder}`;
+    },
+
+    async recordCleanupRun(summary: string): Promise<void> {
+      await db`
+        INSERT INTO app_settings (key, value, updated_at) VALUES ('camera_cleanup_last_run', ${summary}, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+      `;
+    },
+
+    /**
+     * Owner-facing cleanup health: deletions still waiting on R2, those that
+     * exhausted their retries (still counted in the budget — they need manual
+     * attention), late-upload checks that exhausted theirs, and the last
+     * scheduled run's counts. Never returns keys or ids.
+     */
+    async cleanupHealth(input: { maxAttempts: number }): Promise<{
+      pendingDeleteCount: number;
+      stuckDeleteCount: number;
+      stuckLateUploadCheckCount: number;
+      lastCleanupRun: string | null;
+    }> {
+      const rows = await db`
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'pending_delete') AS pending_delete_count,
+          COUNT(*) FILTER (WHERE status = 'pending_delete' AND delete_attempts >= ${input.maxAttempts}) AS stuck_delete_count,
+          COUNT(*) FILTER (WHERE status = 'deleted' AND delete_reason = 'expired_reservation'
+                             AND late_upload_checked_at IS NULL AND late_upload_check_attempts >= ${input.maxAttempts}) AS stuck_late_upload_check_count,
+          (SELECT value FROM app_settings WHERE key = 'camera_cleanup_last_run') AS last_cleanup_run
+        FROM camera_recordings
+      `;
+      return {
+        pendingDeleteCount: asNumber(rows[0]?.pending_delete_count),
+        stuckDeleteCount: asNumber(rows[0]?.stuck_delete_count),
+        stuckLateUploadCheckCount: asNumber(rows[0]?.stuck_late_upload_check_count),
+        lastCleanupRun: asNullableString(rows[0]?.last_cleanup_run),
+      };
+    },
+
+    async readSweepCursor(): Promise<string | null> {
+      const rows = await db`SELECT value FROM app_settings WHERE key = 'camera_orphan_sweep_cursor'`;
+      return rows.length === 0 ? null : asNullableString(rows[0].value);
+    },
+
+    /** A null cursor means the pass finished; the next sweep starts from the beginning. */
+    async writeSweepCursor(cursor: string | null): Promise<void> {
+      if (cursor === null) {
+        await db`DELETE FROM app_settings WHERE key = 'camera_orphan_sweep_cursor'`;
+        return;
+      }
+      await db`
+        INSERT INTO app_settings (key, value, updated_at) VALUES ('camera_orphan_sweep_cursor', ${cursor}, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+      `;
+    },
+
+    /**
+     * Re-issuing an upload URL for an existing reservation restarts its TTL.
+     * Returns null if the row was claimed for expiry in the meantime, so the
+     * caller never hands out a URL for an object that is being deleted.
+     */
+    async touchReservation(id: string): Promise<CameraRecording | null> {
+      const rows = await db`
+        UPDATE camera_recordings SET authorized_at = now()
+        WHERE id = ${id} AND status = 'reserved'
+        RETURNING *
+      `;
+      return rows.length === 0 ? null : mapCameraRow(rows[0]);
+    },
+
+    /**
+     * Create a `reserved` row, re-checking the live budget inside the INSERT
+     * itself (`WHERE ... <= budgetBytes`). Pending deletions count as used
+     * until confirmed. Returns null if it still doesn't fit even after the
+     * caller's rotation — the caller must treat that as `storage_full`, not
+     * retry the insert differently.
+     */
+    async reserve(input: {
+      id: string;
+      recordingId: string;
+      ownerId: string;
+      camera: string;
+      cameraName: string;
+      storageObjectKey: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+      width: number | null;
+      height: number | null;
+      codec: string | null;
+      recordedStartAt: string;
+      recordedEndAt: string;
+      durationSeconds: number | null;
+      budgetBytes: number;
+    }): Promise<CameraRecording | null> {
+      // A single INSERT … WHERE fits-in-budget is NOT enough on its own: under
+      // READ COMMITTED, concurrent inserts can't see each other's uncommitted
+      // rows, so N parallel reservations each pass the check (verified against
+      // real Postgres: 6 × 30 MB granted on a 100 MB budget). A transaction-
+      // scoped advisory lock serializes reservations; the INSERT, as the
+      // transaction's second statement, takes its snapshot only after the lock
+      // is held, so it sees every reservation committed before it.
+      const [, rows] = await db.transaction((txn) => [
+        txn`SELECT pg_advisory_xact_lock(hashtext('kcx_camera_budget'))`,
+        txn`
+        WITH usage AS (
+          SELECT COALESCE(SUM(size_bytes), 0) AS active_bytes
+          FROM camera_recordings WHERE status IN ('active', 'pending_delete')
+        ), reserved AS (
+          SELECT COALESCE(SUM(reserved_bytes), 0) AS reserved_bytes
+          FROM camera_recordings WHERE status = 'reserved'
+        )
+        INSERT INTO camera_recordings (
+          id, recording_id, owner_id, camera, camera_name, storage_object_key, mime_type,
+          size_bytes, reserved_bytes, sha256, width, height, codec,
+          recorded_start_at, recorded_end_at, duration_seconds, status
+        )
+        SELECT
+          ${input.id}, ${input.recordingId}, ${input.ownerId}, ${input.camera}, ${input.cameraName},
+          ${input.storageObjectKey}, ${input.mimeType}, 0, ${input.sizeBytes}, ${input.sha256.toLowerCase()},
+          ${input.width}, ${input.height}, ${input.codec},
+          ${input.recordedStartAt}, ${input.recordedEndAt}, ${input.durationSeconds}, 'reserved'
+        FROM usage, reserved
+        WHERE usage.active_bytes + reserved.reserved_bytes + ${input.sizeBytes} <= ${input.budgetBytes}
+        RETURNING *
+      `,
+      ]);
+      return rows.length === 0 ? null : mapCameraRow(rows[0]);
+    },
+
+    /**
+     * Finalize. Idempotent: an already-`active` row with this id is returned
+     * unchanged rather than re-updated or treated as an error, so a retried
+     * finalize call after a dropped response is harmless.
+     */
+    async markActive(input: { id: string; actualSizeBytes: number }): Promise<{ item: CameraRecording; idempotent: boolean } | null> {
+      const updated = await db`
+        UPDATE camera_recordings SET
+          status = 'active', size_bytes = ${input.actualSizeBytes}, reserved_bytes = 0, finalized_at = now()
+        WHERE id = ${input.id} AND status = 'reserved'
+        RETURNING *
+      `;
+      if (updated.length > 0) return { item: mapCameraRow(updated[0]), idempotent: false };
+
+      const existing = await db`SELECT * FROM camera_recordings WHERE id = ${input.id} AND status = 'active'`;
+      return existing.length > 0 ? { item: mapCameraRow(existing[0]), idempotent: true } : null;
+    },
+
+    /**
+     * Owner-only toggle. Scoped to `status = 'active'` rows only — a
+     * `reserved` or already-`deleted` row has no protection to toggle.
+     * Race-free against rotation: `rotateForSpace` re-reads `protected` at
+     * the instant its DELETE executes, so a protect that committed before
+     * that statement began excludes the row; Postgres's row-level locking
+     * on the matched set serializes a true in-flight race rather than
+     * allowing a protected row to be deleted.
+     */
+    async setProtected(input: { id: string; ownerId: string; protected: boolean }): Promise<CameraRecording | null> {
+      const rows = await db`
+        UPDATE camera_recordings SET protected = ${input.protected}
+        WHERE id = ${input.id} AND owner_id = ${input.ownerId} AND status = 'active'
+        RETURNING *
+      `;
+      return rows.length === 0 ? null : mapCameraRow(rows[0]);
+    },
+
+    /** Owner archive browsing: optional camera filter, optional [from, to) recorded-time window (caller computes LA-local day bounds). */
+    async listForOwner(input: {
+      ownerId: string;
+      camera: string | null;
+      from: string | null;
+      to: string | null;
+      limit?: number;
+    }): Promise<CameraRecording[]> {
+      const limit = Math.min(input.limit ?? 200, 500);
+      const rows = await db`
+        SELECT * FROM camera_recordings
+        WHERE owner_id = ${input.ownerId} AND status = 'active'
+          AND (${input.camera}::text IS NULL OR camera = ${input.camera})
+          AND (${input.from}::timestamptz IS NULL OR recorded_start_at >= ${input.from}::timestamptz)
+          AND (${input.to}::timestamptz IS NULL OR recorded_start_at < ${input.to}::timestamptz)
+        ORDER BY recorded_start_at DESC
+        LIMIT ${limit}
+      `;
+      return rows.map(mapCameraRow);
     },
   };
 }

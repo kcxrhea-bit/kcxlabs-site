@@ -44,7 +44,9 @@ test("the desktop shell's full-viewport lock is scoped to pages rendering .deskt
   assert.match(css, /html:has\(\.desktop-app\) body\s*\{\s*overflow:\s*hidden;/);
 });
 
-test("Downloads does not link the private Camera Archive", () => {
+test("Camera Archive is its own route, not linked from public navigation or Downloads", () => {
+  const routes = readFileSync(join(root, "src", "routes.ts"), "utf8");
+  assert.match(routes, /case "\/camera-archive":\s*return "camera-archive";/);
   const downloads = readFileSync(join(root, "src", "components", "pages", "DownloadsPage.tsx"), "utf8");
   assert.doesNotMatch(downloads, /CameraArchive|camera-archive|\/api\/camera/);
 });

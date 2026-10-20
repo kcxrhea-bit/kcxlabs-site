@@ -349,6 +349,55 @@ export function toPublicMediaItem(item: MediaItem): PublicMediaItem {
 }
 
 /**
+ * The subset safe to return to the AUTHENTICATED OWNER on the Camera Archive
+ * web viewer. Narrower than `MediaItem` the same way `PublicMediaItem` is:
+ * `storageObjectKey`, `localArchivePath`, `sha256`, and `ownerId` never reach
+ * the browser, even for the owner's own private items. Playback/download
+ * links are issued separately, as short-lived presigned URLs, never as this
+ * item's raw storage key.
+ */
+export type ArchiveMediaItem = Pick<
+  MediaItem,
+  | "id"
+  | "originalFilename"
+  | "mimeType"
+  | "kind"
+  | "sizeBytes"
+  | "title"
+  | "game"
+  | "eventType"
+  | "durationSeconds"
+  | "width"
+  | "height"
+  | "codec"
+  | "visibility"
+  | "recordedAt"
+  | "uploadedAt"
+  | "originalOnline"
+>;
+
+export function toArchiveMediaItem(item: MediaItem): ArchiveMediaItem {
+  return {
+    id: item.id,
+    originalFilename: item.originalFilename,
+    mimeType: item.mimeType,
+    kind: item.kind,
+    sizeBytes: item.sizeBytes,
+    title: item.title,
+    game: item.game,
+    eventType: item.eventType,
+    durationSeconds: item.durationSeconds,
+    width: item.width,
+    height: item.height,
+    codec: item.codec,
+    visibility: item.visibility,
+    recordedAt: item.recordedAt,
+    uploadedAt: item.uploadedAt,
+    originalOnline: item.originalOnline,
+  };
+}
+
+/**
  * What the share page should render.
  *
  * `archived` is not an error state and must not be presented as one: the clip

@@ -1,7 +1,7 @@
 /**
  * Proves the single Vercel Function at `api/router.ts` — added so the Media
  * Center API stays under the Hobby plan's 12-function limit — routes every one
- * of the 17 real URLs to its real, unmodified handler, and that the dispatcher
+ * of the 22 real URLs to its real, unmodified handler, and that the dispatcher
  * itself never touches the request in a way that could drop a query string,
  * a body, an Authorization header, or a dynamic id segment.
  *
@@ -16,7 +16,7 @@
  *
  * Live dispatch (`dispatch(req, res)`) is exercised for every route whose
  * first gate (`requireMethod` or `requireDevice`) short-circuits before any
- * database or R2 call — 15 of the 17. The remaining two, `clips` and
+ * database or R2 call — 20 of the 22. The remaining two, `clips` and
  * `media/public/[publicId]`, have no auth gate and touch the database for any
  * request, so this suite proves routing to them with `resolveRoute` alone
  * (pure, no I/O) and leaves their business logic to the static source-text
@@ -89,13 +89,19 @@ test("the dispatcher file only routes; it imports every route module rather than
   const dispatcher = source("api/router.ts");
   assert.match(dispatcher, /export default async function dispatch/);
   assert.match(dispatcher, /export function resolveRoute/);
-  // All 17 routes imported from their relocated modules, none re-declared inline.
+  // All 22 routes imported from their relocated modules, none re-declared inline.
   for (const specifier of [
     "auth/pair", "auth/revoke", "clips", "media/index", "media/check-hash",
     "media/upload-authorize", "media/finalize", "media/[id]", "media/public/[publicId]",
     "media/[id]/restore-authorize", "media/[id]/restore-finalize", "archive/jobs",
     "archive/[id]/start", "archive/[id]/complete", "archive/[id]/fail",
     "archive/[id]/download-authorize", "archive/[id]/remove-cloud-original",
+    "media/archive/auth/login", "media/archive/auth/logout", "media/archive/list",
+    "media/archive/[id]/play", "media/archive/[id]/download",
+    "camera/auth/login", "camera/auth/logout", "camera/upload-authorize", "camera/finalize",
+    "camera/archive/list", "camera/archive/budget", "camera/archive/[id]/play",
+    "camera/archive/[id]/download", "camera/archive/[id]/protect", "camera/archive/[id]/unprotect",
+    "camera/maintenance/cleanup",
   ]) {
     // ".js" is required on the specifier for native Node ESM (Vercel runs this as a real ES
     // module, not bundled) even though the actual source file is .ts.
@@ -142,9 +148,25 @@ const canonicalUrls = [
   "/api/archive/xyz789/fail",
   "/api/archive/xyz789/download-authorize",
   "/api/archive/xyz789/remove-cloud-original",
+  "/api/media/archive/auth/login",
+  "/api/media/archive/auth/logout",
+  "/api/media/archive/list",
+  "/api/media/archive/abc123/play",
+  "/api/media/archive/abc123/download",
+  "/api/camera/auth/login",
+  "/api/camera/auth/logout",
+  "/api/camera/upload-authorize",
+  "/api/camera/finalize",
+  "/api/camera/archive/list",
+  "/api/camera/archive/budget",
+  "/api/camera/archive/abc123/play",
+  "/api/camera/archive/abc123/download",
+  "/api/camera/archive/abc123/protect",
+  "/api/camera/archive/abc123/unprotect",
+  "/api/camera/maintenance/cleanup",
 ];
 
-test("every one of the 17 real URLs resolves to a real (non-null) handler", () => {
+test("every one of the 33 real URLs resolves to a real (non-null) handler", () => {
   for (const url of canonicalUrls) {
     assert.notEqual(resolveRoute(url), null, `${url} did not resolve`);
   }
@@ -276,6 +298,48 @@ test("auth/pair: reached through the real dispatcher, not a hang (no auth gate �
   const { status, ended } = await run({ method: "POST", url: "/api/auth/pair", body: JSON.stringify({}) });
   assert.equal(ended, true);
   assert.equal(status, 400);
+});
+
+test("vercel.json schedules exactly one Hobby-compatible daily cron: the camera cleanup, outside the 6AM-10PM LA recording window", () => {
+  const vercel = JSON.parse(source("vercel.json"));
+  assert.deepEqual(vercel.crons, [{ path: "/api/camera/maintenance/cleanup", schedule: "17 11 * * *" }]);
+  const [minute, hour, dom, month, dow] = vercel.crons[0].schedule.split(" ");
+  // Hobby allows at most one run per day: fixed minute and hour, every day.
+  assert.match(minute, /^\d+$/);
+  assert.match(hour, /^\d+$/);
+  assert.deepEqual([dom, month, dow], ["*", "*", "*"]);
+  // 11:17 UTC is 03:17 PST / 04:17 PDT; Hobby may fire anywhere in that hour, still before 06:00 LA.
+  assert.ok(Number(hour) === 11, "keep the run inside the overnight gap in both PST and PDT");
+  assert.equal(vercel.functions, undefined, "project-wide function settings (e.g. maxDuration) are left to the dashboard default");
+});
+
+test("a Vercel Cron call to /api/camera/maintenance/cleanup survives the production rewrite and reaches the CRON_SECRET gate (401 without it)", NO_HANG, async () => {
+  const { status, body } = await run({ method: "GET", url: rewrittenUrl("camera/maintenance/cleanup") });
+  assert.equal(status, 401);
+  assert.deepEqual(JSON.parse(body), { error: "unauthorized" });
+});
+
+test("through the production rewrite, the cleanup route accepts only the exact CRON_SECRET bearer, then fails closed without camera R2 credentials", NO_HANG, async () => {
+  const secret = "s".repeat(48);
+  const saved = { cron: process.env.CRON_SECRET, id: process.env.CAMERA_R2_ACCESS_KEY_ID, key: process.env.CAMERA_R2_SECRET_ACCESS_KEY };
+  process.env.CRON_SECRET = secret;
+  delete process.env.CAMERA_R2_ACCESS_KEY_ID;
+  delete process.env.CAMERA_R2_SECRET_ACCESS_KEY;
+  try {
+    const url = rewrittenUrl("camera/maintenance/cleanup");
+    const wrong = await run({ method: "GET", url, headers: { host: HOST, authorization: `Bearer ${"x".repeat(48)}` } });
+    assert.equal(wrong.status, 401);
+    const noScheme = await run({ method: "GET", url, headers: { host: HOST, authorization: secret } });
+    assert.equal(noScheme.status, 401);
+    const cron = await run({ method: "GET", url, headers: { host: HOST, authorization: `Bearer ${secret}`, "user-agent": "vercel-cron/1.0" } });
+    assert.equal(cron.status, 503, "authenticated, then closed because camera R2 credentials are absent");
+    assert.deepEqual(JSON.parse(cron.body), { error: "camera_storage_unconfigured" });
+  } finally {
+    for (const [k, v] of [["CRON_SECRET", saved.cron], ["CAMERA_R2_ACCESS_KEY_ID", saved.id], ["CAMERA_R2_SECRET_ACCESS_KEY", saved.key]]) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
 });
 
 // ─── vercel.json rewrite reconstruction: /api/router?__kcx_path=... ─────────

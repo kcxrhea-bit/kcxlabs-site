@@ -194,6 +194,73 @@ try {
 }
 check("deletion safety constraint actually rejects unsafe rows", constraintEnforced, constraintDetail);
 
+// ─── Camera Archive (migrations 005 + 006) ───────────────────────────────────
+
+const migrations = (await sql`SELECT version FROM schema_migrations`).map((row) => row.version);
+for (const expected of ["005_camera_archive", "006_camera_deletion_safety"]) {
+  check(`migration ${expected} recorded`, migrations.includes(expected), migrations.includes(expected) ? "recorded" : "MISSING");
+}
+for (const expected of ["camera_recordings", "app_settings"]) {
+  check(`table ${expected}`, tables.includes(expected), tables.includes(expected) ? "present" : "MISSING");
+}
+
+const cameraColumns = new Set(
+  (
+    await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'camera_recordings'`
+  ).map((row) => row.column_name),
+);
+for (const expected of [
+  "storage_object_key", "size_bytes", "reserved_bytes", "protected", "status", "authorized_at",
+  "delete_reason", "delete_requested_at", "delete_attempts", "last_delete_attempt_at", "last_delete_error",
+  "late_upload_checked_at", "late_upload_check_attempts", "last_late_upload_check_at",
+]) {
+  check(`camera_recordings.${expected}`, cameraColumns.has(expected), cameraColumns.has(expected) ? "present" : "MISSING");
+}
+
+const cameraStatusDef =
+  (await sql`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'camera_recordings_status_check'`)[0]?.def ?? "";
+check("camera status allows pending_delete", /pending_delete/.test(cameraStatusDef), cameraStatusDef || "constraint MISSING");
+
+const cameraIndexes = (
+  await sql`SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'camera_recordings'`
+).map((row) => row.indexname);
+for (const expected of [
+  "camera_recordings_recording_id_live_idx",
+  "camera_recordings_pending_delete_idx",
+  "camera_recordings_reserved_idx",
+  "camera_recordings_late_upload_idx",
+  "camera_recordings_object_key_idx",
+]) {
+  check(`index ${expected}`, cameraIndexes.includes(expected), cameraIndexes.includes(expected) ? "present" : "MISSING");
+}
+
+// A protected row in pending_delete must be rejected. The INSERT fails, so the
+// one-statement transaction rolls back and nothing is persisted.
+let cameraGuard = false;
+let cameraGuardDetail = "not tested";
+try {
+  await sql.transaction([
+    sql.query(`INSERT INTO camera_recordings (
+      id, recording_id, owner_id, camera, camera_name, storage_object_key, mime_type, size_bytes, sha256,
+      recorded_start_at, recorded_end_at, protected, status
+    ) VALUES (
+      '__verify__', '__verify__', '__verify__', 'living-room', 'verify', 'camera/living-room/__verify__.mp4', 'video/mp4', 1,
+      '${"a".repeat(64)}', '2026-01-01T17:00:00Z', '2026-01-01T17:01:00Z', true, 'pending_delete'
+    )`),
+  ]);
+  cameraGuardDetail = "NOT ENFORCED — a protected row entered pending_delete";
+  await sql`DELETE FROM camera_recordings WHERE id = '__verify__'`;
+} catch (error) {
+  const message = String(error?.message ?? "");
+  if (/camera_recordings_pending_unprotected_check/.test(message)) {
+    cameraGuard = true;
+    cameraGuardDetail = "rejected a protected row in pending_delete";
+  } else {
+    cameraGuardDetail = `unexpected error: ${message}`;
+  }
+}
+check("camera protected-row deletion guard actually rejects unsafe rows", cameraGuard, cameraGuardDetail);
+
 // ─── Report ──────────────────────────────────────────────────────────────────
 
 console.log("\nNeon schema verification\n");
@@ -205,7 +272,7 @@ for (const result of results) {
 
 console.log(`\n${results.length - failed}/${results.length} checks passed.`);
 if (failed > 0) {
-  console.log("Schema does not match migration 001.\n");
+  console.log("Schema does not match migrations 001-006.\n");
   process.exit(1);
 }
-console.log("Schema matches migration 001.\n");
+console.log("Schema matches migrations 001-006.\n");

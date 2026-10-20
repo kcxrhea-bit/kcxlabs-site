@@ -131,6 +131,73 @@ export async function requireOwnerOrDevice(request: Request): Promise<ApiContext
   return { config, ownerId };
 }
 
+/**
+ * Cookie name for the browser Camera Archive session, set by
+ * `POST /api/media/archive/auth/login`. Scoped `Path=/api/media` (not
+ * `/api/snapcal`), so it is a distinct credential from the SnapCal cookie
+ * even though both ultimately resolve to the same single owner.
+ */
+export const MEDIA_SESSION_COOKIE = "media_session";
+
+/**
+ * Resolves either a native device-token client (unchanged `requireDevice()`
+ * behavior, bearer token first) OR a browser session cookie set by
+ * `POST /api/media/archive/auth/login` — the Camera Archive web viewer.
+ * Mirrors `requireOwnerOrDevice()` exactly, with its own cookie name so the
+ * two browser sessions (SnapCal, Camera Archive) are independent credentials
+ * that can be logged out of separately. Missing/invalid/expired credentials
+ * of either kind fail closed with the same 401 shape `requireDevice()` returns.
+ */
+export async function requireOwnerOrDeviceForMedia(request: Request): Promise<ApiContext | Response> {
+  const bearer = bearerToken(request.headers.get("authorization"));
+  if (bearer !== null) {
+    return requireDevice(request);
+  }
+
+  const config = loadAppConfig();
+  const cookieValue = parseCookie(request.headers.get("cookie"), MEDIA_SESSION_COOKIE);
+  if (cookieValue === null) return json(401, { error: "unauthorized" });
+
+  const ownerId = verifySignedSession(cookieValue, config.auth.sessionSecret);
+  if (ownerId === null || ownerId !== SINGLE_OWNER_ID) {
+    return json(401, { error: "unauthorized" });
+  }
+
+  return { config, ownerId };
+}
+
+/**
+ * Cookie name for the browser Camera Archive session, set by
+ * `POST /api/camera/auth/login`. Scoped `Path=/api/camera`, distinct from
+ * both the SnapCal and generic Media Center cookies.
+ */
+export const CAMERA_SESSION_COOKIE = "camera_archive_session";
+
+/**
+ * Owner-session-ONLY guard: unlike `requireOwnerOrDevice`/
+ * `requireOwnerOrDeviceForMedia`, this deliberately does NOT accept a device
+ * bearer token at all. The Camera Archive's browsing/protect/unprotect
+ * surface must stay off-limits to a paired desktop device token — only an
+ * owner who has actually signed into the website gets to list, play,
+ * download, or (un)protect a recording. Upload-authorize/finalize (the
+ * desktop's own channel) use `requireDevice` directly instead, never this.
+ */
+export async function requireOwnerSession(
+  request: Request,
+  cookieName: string = CAMERA_SESSION_COOKIE,
+): Promise<ApiContext | Response> {
+  const config = loadAppConfig();
+  const cookieValue = parseCookie(request.headers.get("cookie"), cookieName);
+  if (cookieValue === null) return json(401, { error: "unauthorized" });
+
+  const ownerId = verifySignedSession(cookieValue, config.auth.sessionSecret);
+  if (ownerId === null || ownerId !== SINGLE_OWNER_ID) {
+    return json(401, { error: "unauthorized" });
+  }
+
+  return { config, ownerId };
+}
+
 /** Keep provider errors useful without ever reflecting a configured credential. */
 export function internalError(error: unknown, config: AppConfig): Response {
   const message = error instanceof Error ? error.message : String(error);

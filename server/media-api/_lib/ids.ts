@@ -47,6 +47,11 @@ export function generateDeviceTokenId(): string {
   return `dev_${randomUUID()}`;
 }
 
+/** Internal primary key for a camera_recordings row. Never appears in a URL. */
+export function generateCameraRecordingId(): string {
+  return `cam_${randomUUID()}`;
+}
+
 /**
  * Raw device token: 32 random bytes, base64url. Returned to the desktop exactly
  * once at pairing; only its SHA-256 is stored server-side.

@@ -1,6 +1,7 @@
 import { AppShell } from "./components/layout/AppShell";
 import { BetaPage } from "./components/pages/BetaPage";
 import { DownloadsPage } from "./components/pages/DownloadsPage";
+import { CameraArchivePage } from "./components/pages/CameraArchivePage";
 import { ClipsPage, SharePage } from "./components/pages/MediaPublicPages";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
@@ -39,6 +40,8 @@ export default function App() {
         <SharePage />
       ) : route === "snapcal" ? (
         <SnapCalPage />
+      ) : route === "camera-archive" ? (
+        <CameraArchivePage />
       ) : (
         <>
           <HeroSection />

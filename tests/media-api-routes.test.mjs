@@ -50,7 +50,17 @@ test("every API route file is discovered (guards the coverage check below agains
   // it exists so a route silently missing from `routeFiles` (e.g. a typo in
   // discoverRouteFiles's traversal) fails loudly instead of the coverage
   // test below just quietly checking fewer files than it should.
-  assert.equal(routeFiles.length, 17);
+  // 17 -> 22: added the Camera Archive routes (media/archive/auth/login,
+  // media/archive/auth/logout, media/archive/list, media/archive/[id]/play,
+  // media/archive/[id]/download).
+  // 22 -> 32: added the dedicated camera/* subsystem (camera/auth/login,
+  // camera/auth/logout, camera/upload-authorize, camera/finalize,
+  // camera/archive/list, camera/archive/budget, camera/archive/[id]/play,
+  // camera/archive/[id]/download, camera/archive/[id]/protect,
+  // camera/archive/[id]/unprotect) — fully isolated from the media/archive/*
+  // routes above, which stay wired for the generic (non-camera) Media Center.
+  // 32 -> 33: added camera/maintenance/cleanup (CRON_SECRET-only scheduled cleanup).
+  assert.equal(routeFiles.length, 33);
 });
 
 test("the api directory holds only the single dispatcher function (Vercel Hobby's 12-function limit)", () => {

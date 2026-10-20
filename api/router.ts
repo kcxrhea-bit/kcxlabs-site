@@ -9,6 +9,11 @@ import uploadAuthorize from "../server/media-api/routes/media/upload-authorize.j
 import finalize from "../server/media-api/routes/media/finalize.js";
 import mediaItem from "../server/media-api/routes/media/[id].js";
 import mediaPublic from "../server/media-api/routes/media/public/[publicId].js";
+import mediaArchiveAuthLogin from "../server/media-api/routes/media/archive/auth/login.js";
+import mediaArchiveAuthLogout from "../server/media-api/routes/media/archive/auth/logout.js";
+import mediaArchiveList from "../server/media-api/routes/media/archive/list.js";
+import mediaArchivePlay from "../server/media-api/routes/media/archive/[id]/play.js";
+import mediaArchiveDownload from "../server/media-api/routes/media/archive/[id]/download.js";
 import restoreAuthorize from "../server/media-api/routes/media/[id]/restore-authorize.js";
 import restoreFinalize from "../server/media-api/routes/media/[id]/restore-finalize.js";
 import archiveJobs from "../server/media-api/routes/archive/jobs.js";
@@ -23,6 +28,17 @@ import snapcalEvents from "../server/snapcal-api/routes/events/index.js";
 import snapcalEventItem from "../server/snapcal-api/routes/events/[id].js";
 import snapcalAuthLogin from "../server/snapcal-api/routes/auth/login.js";
 import snapcalAuthLogout from "../server/snapcal-api/routes/auth/logout.js";
+import cameraAuthLogin from "../server/media-api/routes/camera/auth/login.js";
+import cameraAuthLogout from "../server/media-api/routes/camera/auth/logout.js";
+import cameraUploadAuthorize from "../server/media-api/routes/camera/upload-authorize.js";
+import cameraFinalize from "../server/media-api/routes/camera/finalize.js";
+import cameraArchiveList from "../server/media-api/routes/camera/archive/list.js";
+import cameraArchiveBudget from "../server/media-api/routes/camera/archive/budget.js";
+import cameraArchivePlay from "../server/media-api/routes/camera/archive/[id]/play.js";
+import cameraArchiveDownload from "../server/media-api/routes/camera/archive/[id]/download.js";
+import cameraArchiveProtect from "../server/media-api/routes/camera/archive/[id]/protect.js";
+import cameraArchiveUnprotect from "../server/media-api/routes/camera/archive/[id]/unprotect.js";
+import cameraMaintenanceCleanup from "../server/media-api/routes/camera/maintenance/cleanup.js";
 
 /**
  * Single Vercel Function fronting the entire Media Center AND SnapCal APIs, to stay under the
@@ -100,7 +116,17 @@ const exactRoutes: Record<string, NodeHandler> = {
   "media/check-hash": checkHash,
   "media/upload-authorize": uploadAuthorize,
   "media/finalize": finalize,
+  "media/archive/auth/login": mediaArchiveAuthLogin,
+  "media/archive/auth/logout": mediaArchiveAuthLogout,
+  "media/archive/list": mediaArchiveList,
   "archive/jobs": archiveJobs,
+  "camera/auth/login": cameraAuthLogin,
+  "camera/auth/logout": cameraAuthLogout,
+  "camera/upload-authorize": cameraUploadAuthorize,
+  "camera/finalize": cameraFinalize,
+  "camera/archive/list": cameraArchiveList,
+  "camera/archive/budget": cameraArchiveBudget,
+  "camera/maintenance/cleanup": cameraMaintenanceCleanup,
   "snapcal/v1/health": snapcalHealth,
   "snapcal/v1/calendars": snapcalCalendars,
   "snapcal/v1/events": snapcalEvents,
@@ -111,6 +137,8 @@ const exactRoutes: Record<string, NodeHandler> = {
 function matchDynamic(segments: string[]): NodeHandler | null {
   if (segments.length === 2 && segments[0] === "media") return mediaItem; // /media/<id>
   if (segments.length === 3 && segments[0] === "media" && segments[1] === "public") return mediaPublic; // /media/public/<publicId>
+  if (segments.length === 4 && segments[0] === "media" && segments[1] === "archive" && segments[3] === "play") return mediaArchivePlay; // /media/archive/<id>/play
+  if (segments.length === 4 && segments[0] === "media" && segments[1] === "archive" && segments[3] === "download") return mediaArchiveDownload; // /media/archive/<id>/download
   if (segments.length === 3 && segments[0] === "media" && segments[2] === "restore-authorize") return restoreAuthorize; // /media/<id>/restore-authorize
   if (segments.length === 3 && segments[0] === "media" && segments[2] === "restore-finalize") return restoreFinalize; // /media/<id>/restore-finalize
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "start") return archiveStart; // /archive/<id>/start
@@ -119,6 +147,10 @@ function matchDynamic(segments: string[]): NodeHandler | null {
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "download-authorize") return archiveDownloadAuthorize; // /archive/<id>/download-authorize
   if (segments.length === 3 && segments[0] === "archive" && segments[2] === "remove-cloud-original") return archiveRemoveCloudOriginal; // /archive/<id>/remove-cloud-original
   if (segments.length === 4 && segments[0] === "snapcal" && segments[1] === "v1" && segments[2] === "events") return snapcalEventItem; // /snapcal/v1/events/<id>
+  if (segments.length === 4 && segments[0] === "camera" && segments[1] === "archive" && segments[3] === "play") return cameraArchivePlay; // /camera/archive/<id>/play
+  if (segments.length === 4 && segments[0] === "camera" && segments[1] === "archive" && segments[3] === "download") return cameraArchiveDownload; // /camera/archive/<id>/download
+  if (segments.length === 4 && segments[0] === "camera" && segments[1] === "archive" && segments[3] === "protect") return cameraArchiveProtect; // /camera/archive/<id>/protect
+  if (segments.length === 4 && segments[0] === "camera" && segments[1] === "archive" && segments[3] === "unprotect") return cameraArchiveUnprotect; // /camera/archive/<id>/unprotect
   return null;
 }
 
