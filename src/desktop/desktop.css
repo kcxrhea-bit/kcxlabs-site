@@ -406,13 +406,14 @@
    Sidebar and workspace scroll independently.
    ============================================================ */
 
-html,
-body,
-#root {
+/* Scoped to the desktop shell: this file is also bundled into the public website, where a global body lock breaks page scrolling. */
+html:has(.desktop-app),
+html:has(.desktop-app) body,
+html:has(.desktop-app) #root {
   height: 100%;
 }
 
-body {
+html:has(.desktop-app) body {
   overflow: hidden;
 }
 
