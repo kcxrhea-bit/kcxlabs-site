@@ -283,6 +283,14 @@ function Guide({ navigate }: { navigate: (page: PageName) => void }) {
       </>,
     ],
     [
+      "Tanner & KCx Productions",
+      <>
+        <p>The public KCx Labs homepage features Tanner &amp; KCx Productions, and the <a className="desktop-link" href="https://kcxlabs.org/productions" target="_blank" rel="noreferrer">Productions page</a> summarizes its original music, gaming and Fortnite content, animated music videos, 3D animation, and cinematic projects.</p>
+        <p>Use the YouTube buttons to open the official channel at https://www.youtube.com/@TannerKCxProductions in your browser. The website links to the channel; it does not embed videos, require account access, or report viewing statistics. YouTube availability and any age restrictions are controlled by YouTube.</p>
+        <p>No setup or KCxLabs configuration is required. If the page or channel does not load, check your internet connection, try the official URL in a browser, and return to the Productions page. Related areas: Website &amp; preview and Downloads.</p>
+      </>,
+    ],
+    [
       "Website & preview",
       <>
         <p><button className="desktop-link" onClick={() => navigate("Website")}>Website</button> runs the local production build for the current website bundle. It does not publish, deploy, or change the live site.</p>

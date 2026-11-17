@@ -6,6 +6,7 @@ import { ClipsPage, SharePage } from "./components/pages/MediaPublicPages";
 import { NexusCloudPage } from "./components/pages/NexusCloudPage";
 import { NexusCloudPortalPage } from "./components/pages/NexusCloudPortalPage";
 import { SnapCalPage } from "./components/pages/SnapCalPage";
+import { ProductionsPage } from "./components/pages/ProductionsPage";
 import { EcosystemSection } from "./components/sections/EcosystemSection";
 import { FuturePreviewSection } from "./components/sections/FuturePreviewSection";
 import { HeroSection } from "./components/sections/HeroSection";
@@ -13,6 +14,7 @@ import { MobileAiSection } from "./components/sections/MobileAiSection";
 import { ProjectsPreviewSection } from "./components/sections/ProjectsPreviewSection";
 import { RoboticsSection } from "./components/sections/RoboticsSection";
 import { StudioSpotlight } from "./components/sections/StudioSpotlight";
+import { ProductionsSection } from "./components/sections/ProductionsSection";
 import { SubsystemModulesSection } from "./components/sections/SubsystemModulesSection";
 import { DesktopApp } from "./desktop/DesktopApp";
 import { resolvePublicRoute } from "./routes";
@@ -36,6 +38,8 @@ export default function App() {
         <NexusCloudPortalPage />
       ) : route === "clips" ? (
         <ClipsPage />
+      ) : route === "productions" ? (
+        <ProductionsPage />
       ) : route === "share" ? (
         <SharePage />
       ) : route === "snapcal" ? (
@@ -48,6 +52,7 @@ export default function App() {
           <EcosystemSection />
           <ProjectsPreviewSection />
           <StudioSpotlight />
+          <ProductionsSection />
           <MobileAiSection />
           <SubsystemModulesSection />
           <RoboticsSection />

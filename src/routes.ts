@@ -16,6 +16,7 @@ export const publicRoutes = [
   "nexus",
   "nexus-portal",
   "clips",
+  "productions",
   "share",
   "snapcal",
   "camera-archive",
@@ -30,6 +31,7 @@ export const publicRoutePaths: Record<Exclude<PublicRoute, "home">, string> = {
   nexus: "/nexus",
   "nexus-portal": "/nexus/portal",
   clips: "/clips",
+  productions: "/productions",
   share: "/c/:publicId",
   snapcal: "/snapcal",
   "camera-archive": "/camera-archive",
@@ -61,6 +63,8 @@ export function resolvePublicRoute(pathname: string): PublicRoute {
       return "nexus-portal";
     case "/clips":
       return "clips";
+    case "/productions":
+      return "productions";
     case "/snapcal":
       return "snapcal";
     case "/camera-archive":

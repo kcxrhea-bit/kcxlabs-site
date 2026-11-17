@@ -1,4 +1,4 @@
-import { Github, Mail, RadioTower } from "lucide-react";
+import { Github, Mail, RadioTower, Youtube } from "lucide-react";
 import { contact } from "../../styles/theme";
 
 const ecosystemMap = [
@@ -73,6 +73,10 @@ export function Footer() {
             <a className="footer-link justify-start focus-ring" href="https://github.com" target="_blank" rel="noreferrer">
               <Github size={16} />
               {contact.githubLabel}
+            </a>
+            <a className="footer-link justify-start focus-ring" href="https://www.youtube.com/@TannerKCxProductions" target="_blank" rel="noopener noreferrer" aria-label="Tanner & KCx Productions on YouTube">
+              <Youtube size={16} />
+              Tanner &amp; KCx Productions
             </a>
             <span className="footer-link justify-start">{contact.domain}</span>
           </div>

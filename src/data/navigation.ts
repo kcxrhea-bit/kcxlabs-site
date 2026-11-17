@@ -5,6 +5,7 @@ export const navigationItems = [
   { label: "Robotics", href: "#robotics" },
   { label: "NEXUS", href: "/nexus" },
   { label: "Clips", href: "/clips" },
+  { label: "Productions", href: "/productions" },
   { label: "Devlogs", href: "#devlogs" },
   { label: "SnapCal", href: "/snapcal" },
   { label: "Downloads", href: "/downloads" },
