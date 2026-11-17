@@ -31,6 +31,31 @@ export const pageMetadata = {
     title: "Public Clips | KCx Media | KCx Labs",
     description: "Browse public clips shared through KCx Media. Individual share pages are public by link and are excluded from search indexing.",
   },
+  productions: {
+    path: "/productions",
+    title: "Tanner & KCx Productions | Music, Gaming & Animation | KCx Labs",
+    description: "An independent creative media project featuring original music, gaming content, animated music videos, and cinematic productions.",
+    structuredData: {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://kcxlabs.org/#organization",
+          name: "KCx Labs",
+          url: "https://kcxlabs.org/",
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://kcxlabs.org/productions#organization",
+          name: "Tanner & KCx Productions",
+          url: "https://kcxlabs.org/productions",
+          description: "An independent creative media project featuring original music, gaming content, animated music videos, and cinematic productions.",
+          parentOrganization: { "@id": "https://kcxlabs.org/#organization" },
+          sameAs: ["https://www.youtube.com/@TannerKCxProductions"],
+        },
+      ],
+    },
+  },
   snapcal: {
     path: "/snapcal/",
     title: "SnapCal Private Calendar | KCx Labs",
@@ -68,6 +93,10 @@ export function renderSeoHtml(template, page) {
     html = html.replace(pattern, replacement);
   }
   if (page.noindex) html = html.replace("</head>", `    ${robots}\n  </head>`);
+  if (page.structuredData) {
+    const jsonLd = JSON.stringify(page.structuredData).replaceAll("<", "\\u003c");
+    html = html.replace("</head>", `    <script type="application/ld+json">${jsonLd}</script>\n  </head>`);
+  }
   return html;
 }
 

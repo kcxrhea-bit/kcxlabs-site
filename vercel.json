@@ -23,6 +23,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/productions", "destination": "/seo/productions.html" },
     { "source": "/beta", "destination": "/seo/beta.html" },
     { "source": "/downloads", "destination": "/seo/downloads.html" },
     { "source": "/nexus", "destination": "/seo/nexus.html" },
