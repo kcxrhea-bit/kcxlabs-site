@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "node scripts/dev-electron.mjs",
     "dev:website": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/generate-seo-pages.mjs",
     "build:electron": "node scripts/build-electron.mjs",
     "typecheck": "tsc -b && tsc -p electron/tsconfig.json --noEmit",
     "test": "npm run build:electron && node --test tests/*.test.mjs",

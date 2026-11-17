@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /kids/
+Disallow: /kids-legacy/
+Disallow: /kids-access
+
+Sitemap: https://kcxlabs.org/sitemap.xml

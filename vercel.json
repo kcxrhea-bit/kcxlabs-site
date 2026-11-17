@@ -23,6 +23,13 @@
     }
   ],
   "rewrites": [
+    { "source": "/beta", "destination": "/seo/beta.html" },
+    { "source": "/downloads", "destination": "/seo/downloads.html" },
+    { "source": "/nexus", "destination": "/seo/nexus.html" },
+    { "source": "/nexus/portal", "destination": "/seo/nexus-portal.html" },
+    { "source": "/clips", "destination": "/seo/clips.html" },
+    { "source": "/snapcal/", "destination": "/seo/snapcal.html" },
+    { "source": "/camera-archive", "destination": "/seo/camera-archive.html" },
     {
       "source": "/nexus/assets/(.*)",
       "destination": "/assets/$1"
@@ -34,6 +41,24 @@
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/c/(.*)",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }]
+    },
+    {
+      "source": "/snapcal",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }]
+    },
+    {
+      "source": "/snapcal/",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }]
+    },
+    {
+      "source": "/camera-archive",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }]
     }
   ]
 }
